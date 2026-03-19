@@ -56,6 +56,7 @@ object DevE2ee {
         val env = JSONObject().apply {
             put("v", 1)
             put("alg", "ecdh-p256-aesgcm-v1")
+            put("headerId", "h-${Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(ratchetPubBytes), Base64.NO_WRAP).take(10)}")
             put("ephemeralPub", Base64.encodeToString(eph.public.encoded, Base64.NO_WRAP))
             put("ratchetPub", Base64.encodeToString(ratchetPubBytes, Base64.NO_WRAP))
             put("salt", Base64.encodeToString(salt, Base64.NO_WRAP))

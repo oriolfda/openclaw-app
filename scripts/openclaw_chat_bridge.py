@@ -235,6 +235,7 @@ def _ensure_session_chains(st: dict) -> dict:
     recv.setdefault("maxIn", 0)
     recv.setdefault("seenIn", [])
     recv.setdefault("skippedIn", [])
+    recv.setdefault("skippedByHeader", {})
     recv.setdefault("ratchetStep", 0)
     recv.setdefault("lastPeerRatchetPub", "")
     return st
@@ -297,17 +298,26 @@ def _ratchet_check_and_advance(session_id: str, inbound_counter: int, window: in
     if inbound_counter < max_in - window:
         return False
 
+    header_id = str(recv.get("currentHeaderId", "default"))
+    skipped_by_header = recv.get("skippedByHeader", {}) if isinstance(recv.get("skippedByHeader"), dict) else {}
+    header_skipped = set(int(x) for x in skipped_by_header.get(header_id, []) if isinstance(x, int) or str(x).isdigit())
+
     if inbound_counter > max_in + 1:
-        skipped.update(range(max_in + 1, inbound_counter))
+        missing = set(range(max_in + 1, inbound_counter))
+        skipped.update(missing)
+        header_skipped.update(missing)
 
     seen.add(inbound_counter)
     skipped.discard(inbound_counter)
+    header_skipped.discard(inbound_counter)
     max_in = max(max_in, inbound_counter)
     floor = max_in - window
 
     recv["maxIn"] = max_in
     recv["seenIn"] = sorted(seen)
     recv["skippedIn"] = sorted(skipped)
+    skipped_by_header[header_id] = sorted(c for c in header_skipped if c >= floor)
+    recv["skippedByHeader"] = skipped_by_header
     _ratchet_compact_recv_state(recv, floor)
     _save_ratchet_store(store)
     return True
@@ -442,6 +452,7 @@ def _ratchet_apply_peer_pub(session_id: str, peer_pub_b64: str) -> int:
 
 def decrypt_real_envelope(env: dict, session_id: str):
     eph_b64 = env.get("ephemeralPub", "")
+    header_id = str(env.get("headerId", "default"))
     ratchet_b64 = env.get("ratchetPub", "")
     salt = base64.b64decode(env.get("salt", ""))
     iv = base64.b64decode(env.get("iv", ""))
@@ -454,6 +465,11 @@ def decrypt_real_envelope(env: dict, session_id: str):
     base_key = _hkdf_key(shared, salt)
 
     _ratchet_apply_peer_pub(session_id, ratchet_b64)
+    store = _load_ratchet_store()
+    sessions = store.setdefault("sessions", {})
+    st = _ensure_session_chains(sessions.setdefault(session_id, {}))
+    st["recv"]["currentHeaderId"] = header_id
+    _save_ratchet_store(store)
     if ratchet_b64:
         try:
             ratchet_pub = _decode_pubkey_spki(ratchet_b64)

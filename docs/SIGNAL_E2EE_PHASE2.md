@@ -67,11 +67,20 @@ Implement end-to-end encryption for app↔bridge communications inspired by Sign
 - [x] Response decryption tied to response counter and direction label.
 - [x] Ratchet baseline prepared for chain/message-key evolution.
 
-### Phase 6 progress (current)
+### Phase 6 progress
 - [x] Skipped/reorder window handling (client + bridge) with replay guard.
 - [x] Initial DH ratchet step mixing via `ratchetPub` contribution in key schedule.
 - [x] Persistent ratchet metadata per session at bridge side.
-- [ ] Full Signal Double Ratchet state machine (separate send/recv chains + skipped key cache by header key).
+
+### Block close checkpoint (implemented)
+- [x] Split send/recv chain state at bridge ratchet store (with legacy migration).
+- [x] Persistent skipped-counter window on bridge (`recv.skippedIn`) and client (`e2ee_in_skipped_<session>`).
+- [x] Directional chain-key derivation (`send`/`recv`) used consistently for `c2s`, `s2c`, and `att`.
+- [x] Session base-key persistence on client for encrypted reply recovery after lifecycle changes.
+
+### Next block
+- [ ] Header-based skipped-key cache (`headerId + counter`).
+- [ ] Full Double Ratchet state machine (`rootKey`, `sendChainKey`, `recvChainKey`, counters) with DH-step ratcheting.
 
 ### Stage E
 - Remove plaintext path in strict deployments.
