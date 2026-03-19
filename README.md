@@ -29,6 +29,9 @@ Abans de res, pensa aquests punts:
 - **Signatura Android (keystore/token)**:
   - és clau per poder desplegar actualitzacions de la mateixa app
   - guarda credencials i fitxers de signatura de forma segura
+- **Carpeta compartida humà ↔ assistent AI**:
+  - crea una carpeta compartida de treball/comunicació (APK, captures, logs, errors)
+  - és molt útil per descarregar APK des del mòbil i reportar incidències de prova
 
 ### Pas 2 — Dona aquest repo al teu assistent OpenClaw
 Passa-li l’enllaç del teu fork (o d’aquest repo) i digues-li:
