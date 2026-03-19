@@ -1,0 +1,15 @@
+{
+  "locale": "pt-PT",
+  "strings": {
+    "app_name": "OpenClaw App",
+    "settings_title": "Configuração OpenClaw",
+    "settings_endpoint": "Endpoint",
+    "settings_token": "Token",
+    "settings_theme": "Tema",
+    "settings_ui_language": "Idioma da interface",
+    "settings_show_transcriptions": "Mostrar transcrições de áudio",
+    "save": "Guardar",
+    "saved_ok": "Configuração guardada ✅",
+    "lang_auto": "Automático (sistema)"
+  }
+}

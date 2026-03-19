@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0B1018"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/topToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="#0B1018"
+        android:theme="@style/ThemeOverlay.Material3.Dark.ActionBar"
+        app:menu="@menu/main_overflow_menu"
+        app:navigationIcon="@null"
+        app:title="@string/title_app"
+        app:titleTextColor="#F3F4F6" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/chatRecycler"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingHorizontal="10dp"
+        android:paddingBottom="6dp" />
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="6dp"
+        android:text="@string/status_ready"
+        android:textColor="#7C879A"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <LinearLayout
+            android:id="@+id/pendingAttachmentRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/pendingAttachmentPreview"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginEnd="8dp"
+                android:background="#1F2937"
+                android:padding="4dp"
+                android:scaleType="centerCrop"
+                android:src="@android:drawable/ic_menu_gallery" />
+
+            <TextView
+                android:id="@+id/pendingAttachmentText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="#1F2937"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="8dp"
+                android:text="@string/pending_file"
+                android:textColor="#E5E7EB"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/cancelAttachmentButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/remove" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/playLastAudioButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="@string/sent_audios"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/composerRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/messageInputContainer"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input_chat"
+                android:gravity="center_vertical"
+                android:paddingStart="10dp"
+                android:paddingEnd="6dp">
+
+                <EditText
+                    android:id="@+id/messageEdit"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:hint="@string/hint_write_message"
+                    android:inputType="textMultiLine|textCapSentences"
+                    android:maxLines="4"
+                    android:textColor="#F9FAFB"
+                    android:textColorHint="#7C879A" />
+
+                <ImageButton
+                    android:id="@+id/clipButton"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/cd_attach"
+                    android:padding="6dp"
+                    android:src="@drawable/ic_attach_min" />
+
+                <ImageButton
+                    android:id="@+id/cameraButton"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/cd_camera"
+                    android:padding="6dp"
+                    android:src="@drawable/ic_camera_min" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/sendButton"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_round_send"
+                android:contentDescription="@string/cd_send"
+                android:padding="12dp"
+                android:src="@drawable/ic_send_min"
+                android:visibility="gone" />
+
+            <ImageButton
+                android:id="@+id/micButton"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_round_mic"
+                android:contentDescription="@string/cd_mic"
+                android:padding="12dp"
+                android:src="@drawable/ic_mic_min" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/recordingControlsRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/recordTimerText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:text="@string/timer_zero"
+                android:textColor="#E5E7EB"
+                android:textSize="18sp" />
+
+            <ImageButton
+                android:id="@+id/recordDeleteButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="@string/cd_delete_recording"
+                android:src="@android:drawable/ic_menu_delete" />
+
+            <TextView
+                android:id="@+id/recordDotsText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="10dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="••••••••••••••••••••••••••••••••"
+                android:textColor="#6B7280"
+                android:textSize="16sp" />
+
+            <ImageButton
+                android:id="@+id/recordPauseButton"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginEnd="10dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="@string/cd_pause_recording"
+                android:src="@drawable/ic_pause_min" />
+
+            <ImageButton
+                android:id="@+id/recordSendButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_round_send_green"
+                android:contentDescription="@string/cd_send_recording"
+                android:padding="14dp"
+                android:src="@drawable/ic_send_green_min" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

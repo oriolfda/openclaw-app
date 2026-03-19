@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingVertical="4dp">
+
+    <LinearLayout
+        android:id="@+id/htmlBubble"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.82"
+        android:background="@drawable/bg_chat_bot_ember"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/htmlLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="HTML preview"
+            android:textColor="#9CA3AF"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/htmlOpenHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="↗ Obre ampliat"
+            android:textColor="#D1D5DB"
+            android:textSize="12sp" />
+
+        <WebView
+            android:id="@+id/htmlWeb"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="6dp" />
+
+    </LinearLayout>
+
+    <Space
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_weight="0.18" />
+
+</LinearLayout>
