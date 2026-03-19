@@ -832,11 +832,15 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     attachment?.let {
-                        put("attachment", JSONObject().apply {
-                            put("name", it.name)
-                            put("mime", it.mime)
-                            put("dataBase64", it.base64)
-                        })
+                        if (encResult != null) {
+                            put("e2eeAttachment", DevE2ee.encryptAttachment(it.base64, encResult!!.responseKey, it.name, it.mime, "openclaw-app-chat"))
+                        } else {
+                            put("attachment", JSONObject().apply {
+                                put("name", it.name)
+                                put("mime", it.mime)
+                                put("dataBase64", it.base64)
+                            })
+                        }
                     }
                 }
 

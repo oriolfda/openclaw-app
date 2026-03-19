@@ -384,6 +384,31 @@ def e2ee_bundle_payload() -> dict:
     }
 
 
+def decrypt_e2ee_attachment(att: dict, key: bytes):
+    name = safe_name((att.get("name") or "attachment"))
+    mime = (att.get("mime") or "application/octet-stream").lower()
+    iv = base64.b64decode(att.get("iv", ""))
+    ct = base64.b64decode(att.get("ciphertext", ""))
+    ad = str(att.get("ad", ""))
+
+    aes = AESGCM(key)
+    raw = aes.decrypt(iv, ct, ad.encode("utf-8"))
+
+    ext = name.split(".")[-1] if "." in name else "bin"
+    base = os.path.join(tempfile.gettempdir(), f"openclaw-{uuid.uuid4().hex}")
+    path = f"{base}.{ext}"
+    with open(path, "wb") as f:
+        f.write(raw)
+
+    decoded = {
+        "name": name,
+        "mime": mime,
+        "dataBase64": base64.b64encode(raw).decode("ascii"),
+        "_localPath": path,
+    }
+    return decoded
+
+
 def process_attachment(att: dict):
     """Decode attachment and return (prompt_suffix, temp_paths[])"""
     name = safe_name((att.get("name") or "attachment"))
@@ -615,6 +640,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
         attachment = data.get("attachment") if isinstance(data.get("attachment"), dict) else None
+        e2ee_attachment = data.get("e2eeAttachment") if isinstance(data.get("e2eeAttachment"), dict) else None
+        if e2ee_attachment and reply_key is not None:
+            try:
+                attachment = decrypt_e2ee_attachment(e2ee_attachment, reply_key)
+            except Exception as e:
+                self._send(400, {"ok": False, "error": "e2ee_attachment_decrypt_failed", "details": str(e)})
+                return
+
         prefs = data.get("prefs") if isinstance(data.get("prefs"), dict) else {}
         preferred_lang = (prefs.get("language") or "auto").strip().lower()
         show_transcription = bool(prefs.get("showTranscription", True))
