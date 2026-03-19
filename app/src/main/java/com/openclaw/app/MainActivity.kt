@@ -872,11 +872,9 @@ class MainActivity : AppCompatActivity() {
                         if (obj.has("e2eeReply") && encResult != null) {
                             val env = obj.getJSONObject("e2eeReply")
                             val inCounter = env.optInt("counter", 0)
-                            val lastIn = prefs.getInt("e2ee_last_in_counter", 0)
-                            if (inCounter > 0 && inCounter <= lastIn) {
-                                "[E2EE] Response dropped due to non-monotonic counter"
+                            if (inCounter > 0 && !acceptIncomingCounter(prefs, inCounter)) {
+                                "[E2EE] Response dropped (replay/window)"
                             } else {
-                                if (inCounter > 0) prefs.edit().putInt("e2ee_last_in_counter", inCounter).apply()
                                 DevE2ee.decryptWithKey(encResult!!.responseKey, env)
                             }
                         } else {
@@ -919,6 +917,27 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun acceptIncomingCounter(prefs: android.content.SharedPreferences, counter: Int, window: Int = 64): Boolean {
+        val maxIn = prefs.getInt("e2ee_in_max", 0)
+        val seenRaw = prefs.getString("e2ee_in_seen", "").orEmpty()
+        val seen = seenRaw.split(',').mapNotNull { it.toIntOrNull() }.toMutableSet()
+
+        if (counter <= 0) return false
+        if (seen.contains(counter)) return false
+        if (counter < maxIn - window) return false
+
+        seen.add(counter)
+        val newMax = kotlin.math.max(maxIn, counter)
+        val floor = newMax - window
+        val kept = seen.filter { it >= floor }.sorted()
+
+        prefs.edit()
+            .putInt("e2ee_in_max", newMax)
+            .putString("e2ee_in_seen", kept.joinToString(","))
+            .apply()
+        return true
     }
 
     private fun fetchE2eeBridgeTarget(endpoint: String, token: String): Pair<String, String?>? {

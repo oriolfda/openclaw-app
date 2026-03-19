@@ -246,14 +246,28 @@ def _save_ratchet_store(store: dict):
         json.dump(store, f, indent=2)
 
 
-def _ratchet_check_and_advance(session_id: str, inbound_counter: int) -> bool:
+def _ratchet_check_and_advance(session_id: str, inbound_counter: int, window: int = 64) -> bool:
     store = _load_ratchet_store()
     sessions = store.setdefault("sessions", {})
-    st = sessions.setdefault(session_id, {"lastIn": -1, "lastOut": 0})
-    last_in = int(st.get("lastIn", -1))
-    if inbound_counter <= last_in:
+    st = sessions.setdefault(session_id, {"maxIn": 0, "seenIn": [], "lastOut": 0, "ratchetStep": 0})
+
+    max_in = int(st.get("maxIn", 0))
+    seen = set(int(x) for x in st.get("seenIn", []) if isinstance(x, int) or str(x).isdigit())
+
+    if inbound_counter <= 0:
         return False
-    st["lastIn"] = inbound_counter
+    if inbound_counter in seen:
+        return False
+    if inbound_counter < max_in - window:
+        return False
+
+    seen.add(inbound_counter)
+    max_in = max(max_in, inbound_counter)
+    floor = max_in - window
+    seen = {c for c in seen if c >= floor}
+
+    st["maxIn"] = max_in
+    st["seenIn"] = sorted(seen)
     _save_ratchet_store(store)
     return True
 
@@ -261,7 +275,7 @@ def _ratchet_check_and_advance(session_id: str, inbound_counter: int) -> bool:
 def _ratchet_next_out_counter(session_id: str) -> int:
     store = _load_ratchet_store()
     sessions = store.setdefault("sessions", {})
-    st = sessions.setdefault(session_id, {"lastIn": -1, "lastOut": 0})
+    st = sessions.setdefault(session_id, {"maxIn": 0, "seenIn": [], "lastOut": 0, "ratchetStep": 0})
     nxt = int(st.get("lastOut", 0)) + 1
     st["lastOut"] = nxt
     _save_ratchet_store(store)
@@ -348,8 +362,23 @@ def encrypt_real_envelope(plaintext: str, key: bytes, ad: str = "") -> dict:
     }
 
 
-def decrypt_real_envelope(env: dict):
+def _ratchet_apply_peer_pub(session_id: str, peer_pub_b64: str) -> int:
+    store = _load_ratchet_store()
+    sessions = store.setdefault("sessions", {})
+    st = sessions.setdefault(session_id, {"maxIn": 0, "seenIn": [], "lastOut": 0, "ratchetStep": 0})
+    last_pub = st.get("lastPeerRatchetPub", "")
+    step = int(st.get("ratchetStep", 0))
+    if peer_pub_b64 and peer_pub_b64 != last_pub:
+        step += 1
+        st["lastPeerRatchetPub"] = peer_pub_b64
+        st["ratchetStep"] = step
+        _save_ratchet_store(store)
+    return step
+
+
+def decrypt_real_envelope(env: dict, session_id: str):
     eph_b64 = env.get("ephemeralPub", "")
+    ratchet_b64 = env.get("ratchetPub", "")
     salt = base64.b64decode(env.get("salt", ""))
     iv = base64.b64decode(env.get("iv", ""))
     ct = base64.b64decode(env.get("ciphertext", ""))
@@ -359,6 +388,18 @@ def decrypt_real_envelope(env: dict):
     eph_pub = _decode_pubkey_spki(eph_b64)
     shared = _BRIDGE_PRIVKEY.exchange(ec.ECDH(), eph_pub)
     base_key = _hkdf_key(shared, salt)
+
+    _ratchet_apply_peer_pub(session_id, ratchet_b64)
+    if ratchet_b64:
+        try:
+            ratchet_pub = _decode_pubkey_spki(ratchet_b64)
+            ratchet_shared = _BRIDGE_PRIVKEY.exchange(ec.ECDH(), ratchet_pub)
+            import hashlib
+            mix_salt = hashlib.sha256(base64.b64decode(ratchet_b64)).digest()[:16]
+            base_key = _hkdf_key(base_key + ratchet_shared, mix_salt)
+        except Exception:
+            pass
+
     key = _derive_message_key(base_key, counter, "c2s")
     aes = AESGCM(key)
     pt = aes.decrypt(iv, ct, ad.encode("utf-8")).decode("utf-8")
@@ -628,11 +669,12 @@ class Handler(BaseHTTPRequestHandler):
         reply_key = None
         reply_ad = ""
         inbound_counter = 0
+        session_id = (data.get("sessionId") or DEFAULT_SESSION).strip() or DEFAULT_SESSION
 
         message = (data.get("message") or "").strip()
         if e2ee_req and (not message) and e2ee_req.get("ciphertext"):
             try:
-                message, reply_key, reply_ad, inbound_counter = decrypt_real_envelope(e2ee_req)
+                message, reply_key, reply_ad, inbound_counter = decrypt_real_envelope(e2ee_req, session_id)
                 message = message.strip()
                 otk_id = str(e2ee_req.get("otkId", "")).strip()
                 if otk_id:
@@ -641,7 +683,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"ok": False, "error": "e2ee_decrypt_failed", "details": str(e)})
                 return
 
-        session_id = (data.get("sessionId") or DEFAULT_SESSION).strip() or DEFAULT_SESSION
         if e2ee_req and e2ee_req.get("ciphertext"):
             if not _ratchet_check_and_advance(session_id, inbound_counter):
                 self._send(409, {"ok": False, "error": "e2ee_replay_or_reorder", "details": "Inbound counter not monotonic"})

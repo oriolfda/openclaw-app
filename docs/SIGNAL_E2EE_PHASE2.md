@@ -62,11 +62,16 @@ Implement end-to-end encryption for app↔bridge communications inspired by Sign
 - [x] Attachment encryption in client using E2EE session key material.
 - [x] Bridge-side attachment decryption before processing (STT/image/video flow preserved).
 
-### Phase 5 progress (current)
+### Phase 5 progress
 - [x] Directional per-message key derivation (`c2s`, `s2c`, `att`) from base session key + counter.
 - [x] Response decryption tied to response counter and direction label.
 - [x] Ratchet baseline prepared for chain/message-key evolution.
-- [ ] Full Double Ratchet with skipped-key window and DH step ratcheting.
+
+### Phase 6 progress (current)
+- [x] Skipped/reorder window handling (client + bridge) with replay guard.
+- [x] Initial DH ratchet step mixing via `ratchetPub` contribution in key schedule.
+- [x] Persistent ratchet metadata per session at bridge side.
+- [ ] Full Signal Double Ratchet state machine (separate send/recv chains + skipped key cache by header key).
 
 ### Stage E
 - Remove plaintext path in strict deployments.

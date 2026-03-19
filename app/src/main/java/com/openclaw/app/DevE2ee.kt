@@ -4,6 +4,7 @@ import android.util.Base64
 import org.json.JSONObject
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
+import java.security.MessageDigest
 import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.Signature
@@ -32,7 +33,17 @@ object DevE2ee {
         val shared = ka.generateSecret()
 
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
-        val baseKey = hkdfSha256(shared, salt, "openclaw-e2ee-v1", 32)
+        var baseKey = hkdfSha256(shared, salt, "openclaw-e2ee-v1", 32)
+
+        val ratchet = kpg.generateKeyPair()
+        val kaRatchet = KeyAgreement.getInstance("ECDH")
+        kaRatchet.init(ratchet.private)
+        kaRatchet.doPhase(bridgePub, true)
+        val ratchetShared = kaRatchet.generateSecret()
+        val ratchetPubBytes = ratchet.public.encoded
+        val ratchetSalt = MessageDigest.getInstance("SHA-256").digest(ratchetPubBytes).copyOfRange(0, 16)
+        baseKey = hkdfSha256(baseKey + ratchetShared, ratchetSalt, "openclaw-ratchet-step-v1", 32)
+
         val key = deriveMessageKey(baseKey, counter, "c2s")
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
 
@@ -45,6 +56,7 @@ object DevE2ee {
             put("v", 1)
             put("alg", "ecdh-p256-aesgcm-v1")
             put("ephemeralPub", Base64.encodeToString(eph.public.encoded, Base64.NO_WRAP))
+            put("ratchetPub", Base64.encodeToString(ratchetPubBytes, Base64.NO_WRAP))
             put("salt", Base64.encodeToString(salt, Base64.NO_WRAP))
             put("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
             put("ciphertext", Base64.encodeToString(ct, Base64.NO_WRAP))
