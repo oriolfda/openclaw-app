@@ -15,6 +15,9 @@ DEFAULT_SESSION = os.environ.get("OPENCLAW_APP_BRIDGE_SESSION", "openclaw-app-ch
 PUBLIC_BASE_URL = os.environ.get("OPENCLAW_APP_BRIDGE_PUBLIC_BASE_URL", f"http://192.168.0.102:{PORT}")
 MEDIA_DIR = os.environ.get("OPENCLAW_APP_BRIDGE_MEDIA_DIR", "/mnt/apps/openclaw/media")
 EDGE_TTS = os.environ.get("OPENCLAW_APP_BRIDGE_EDGE_TTS", "/home/oriol/.openclaw/venvs/openclaw-tts/bin/edge-tts")
+E2EE_ENABLED = os.environ.get("OPENCLAW_APP_E2EE_ENABLED", "false").lower() == "true"
+E2EE_REQUIRED = os.environ.get("OPENCLAW_APP_E2EE_REQUIRED", "false").lower() == "true"
+E2EE_PROTOCOL = os.environ.get("OPENCLAW_APP_E2EE_PROTOCOL", "signal-x3dh-dr-v1")
 
 
 def extract_json_block(text: str):
@@ -225,6 +228,21 @@ class Handler(BaseHTTPRequestHandler):
         return auth == f"Bearer {TOKEN}"
 
     def do_GET(self):
+        if self.path == "/e2ee/status":
+            if not self._auth_ok():
+                self._send(401, {"ok": False, "error": "Unauthorized"})
+                return
+            self._send(200, {
+                "ok": True,
+                "e2ee": {
+                    "enabled": E2EE_ENABLED,
+                    "required": E2EE_REQUIRED,
+                    "protocol": E2EE_PROTOCOL,
+                    "stage": "A-capability-and-enforcement"
+                }
+            })
+            return
+
         if self.path.startswith("/media/"):
             name = safe_name(self.path.split("/media/", 1)[1])
             path = os.path.join(MEDIA_DIR, name)
@@ -325,6 +343,14 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(raw or "{}")
         except Exception:
             self._send(400, {"ok": False, "error": "Bad JSON"})
+            return
+
+        if E2EE_REQUIRED and not isinstance(data.get("e2ee"), dict):
+            self._send(400, {
+                "ok": False,
+                "error": "e2ee_required",
+                "message": "Server requires encrypted envelope (phase 2)."
+            })
             return
 
         message = (data.get("message") or "").strip()

@@ -73,6 +73,9 @@ Recommended environment variables:
 - `OPENCLAW_APP_BRIDGE_PUBLIC_BASE_URL`
 - `OPENCLAW_APP_BRIDGE_MEDIA_DIR`
 - `OPENCLAW_APP_BRIDGE_EDGE_TTS`
+- `OPENCLAW_APP_E2EE_ENABLED` (optional, phase 2)
+- `OPENCLAW_APP_E2EE_REQUIRED` (optional, phase 2 strict mode)
+- `OPENCLAW_APP_E2EE_PROTOCOL` (default: `signal-x3dh-dr-v1`)
 
 Bridge-TTS note:
 - Configure bridge-TTS after collecting the interactive TTS mode (`auto`/`specific-voice`).
