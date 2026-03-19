@@ -22,6 +22,8 @@ Minimum intake fields:
 7. Deployment preference:
    - Local LAN only, or internet-accessible?
    - If internet-accessible: domain/subdomain plan (DuckDNS/custom domain), reverse proxy choice (e.g., nginx), TLS plan.
+8. Optional shared-folder workflow:
+   - Ask where the human wants APK delivery files and bug-report evidence (screenshots/logs).
 
 If data is missing, ask follow-up questions interactively instead of guessing.
 
