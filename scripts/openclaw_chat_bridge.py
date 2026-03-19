@@ -167,9 +167,54 @@ def b64rand(n: int) -> str:
     return base64.urlsafe_b64encode(os.urandom(n)).decode("ascii").rstrip("=")
 
 
-_BRIDGE_PRIVKEY = ec.generate_private_key(ec.SECP256R1())
+def _bridge_keystore_path() -> str:
+    return os.environ.get("OPENCLAW_APP_E2EE_KEYSTORE", "/mnt/apps/openclaw/e2ee/bridge_keys.json")
+
+
+def _load_or_create_bridge_keys():
+    path = _bridge_keystore_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        ecdh_priv = serialization.load_pem_private_key(raw["ecdhPrivatePem"].encode("utf-8"), password=None)
+        sign_priv = serialization.load_pem_private_key(raw["signPrivatePem"].encode("utf-8"), password=None)
+        kid = str(raw.get("kid", E2EE_BUNDLE_KID))
+        return ecdh_priv, sign_priv, kid
+
+    ecdh_priv = ec.generate_private_key(ec.SECP256R1())
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    sign_priv = ed25519.Ed25519PrivateKey.generate()
+
+    raw = {
+        "kid": str(E2EE_BUNDLE_KID),
+        "ecdhPrivatePem": ecdh_priv.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode("utf-8"),
+        "signPrivatePem": sign_priv.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode("utf-8"),
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(raw, f, indent=2)
+
+    return ecdh_priv, sign_priv, str(E2EE_BUNDLE_KID)
+
+
+_BRIDGE_PRIVKEY, _BRIDGE_SIGN_PRIVKEY, _BRIDGE_KID = _load_or_create_bridge_keys()
 _BRIDGE_PUB_B64 = base64.b64encode(
     _BRIDGE_PRIVKEY.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+).decode("ascii")
+_BRIDGE_SIGN_PUB_B64 = base64.b64encode(
+    _BRIDGE_SIGN_PRIVKEY.public_key().public_bytes(
         encoding=serialization.Encoding.DER,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
@@ -215,6 +260,7 @@ def decrypt_real_envelope(env: dict):
 
 
 def e2ee_bundle_payload() -> dict:
+    signed_prekey_sig = base64.b64encode(_BRIDGE_SIGN_PRIVKEY.sign(base64.b64decode(_BRIDGE_PUB_B64))).decode("ascii")
     one_time = [{"id": f"otk-{i+1}", "publicKey": _BRIDGE_PUB_B64} for i in range(5)]
     return {
         "ok": True,
@@ -223,16 +269,17 @@ def e2ee_bundle_payload() -> dict:
             "required": E2EE_REQUIRED,
             "protocol": E2EE_PROTOCOL,
             "bundle": {
-                "kid": E2EE_BUNDLE_KID,
+                "kid": _BRIDGE_KID,
                 "identityKey": _BRIDGE_PUB_B64,
+                "identitySignKey": _BRIDGE_SIGN_PUB_B64,
                 "signedPreKey": {
-                    "id": f"spk-{E2EE_BUNDLE_KID}",
+                    "id": f"spk-{_BRIDGE_KID}",
                     "publicKey": _BRIDGE_PUB_B64,
-                    "signature": E2EE_SIGNED_PREKEY_SIG or "runtime-generated",
+                    "signature": signed_prekey_sig,
                 },
                 "oneTimePreKeys": one_time,
             },
-            "warning": "Runtime P-256 keypair (replace with persistent signed prekeys for production)."
+            "warning": "Phase 1 done: persistent bridge keys + signed prekey bundle."
         }
     }
 

@@ -6,6 +6,7 @@ import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.PublicKey
 import java.security.SecureRandom
+import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import javax.crypto.Cipher
 import javax.crypto.KeyAgreement
@@ -63,6 +64,20 @@ object DevE2ee {
         cipher.updateAAD(ad.toByteArray(Charsets.UTF_8))
         val pt = cipher.doFinal(ct)
         return String(pt, Charsets.UTF_8)
+    }
+
+    fun verifySignedPreKey(identitySignPubB64: String, signedPreKeyPubB64: String, sigB64: String): Boolean {
+        return try {
+            val pubBytes = Base64.decode(identitySignPubB64, Base64.DEFAULT)
+            val kf = KeyFactory.getInstance("Ed25519")
+            val pub = kf.generatePublic(X509EncodedKeySpec(pubBytes))
+            val sig = Signature.getInstance("Ed25519")
+            sig.initVerify(pub)
+            sig.update(Base64.decode(signedPreKeyPubB64, Base64.DEFAULT))
+            sig.verify(Base64.decode(sigB64, Base64.DEFAULT))
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun decodePublicKey(b64: String): PublicKey {

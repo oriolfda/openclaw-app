@@ -921,8 +921,14 @@ class MainActivity : AppCompatActivity() {
             val obj = JSONObject(body)
             val e2ee = obj.optJSONObject("e2ee") ?: return null
             val bundle = e2ee.optJSONObject("bundle") ?: return null
-            val spk = bundle.optJSONObject("signedPreKey")
-            spk?.optString("publicKey", "")?.ifBlank { null }
+            val signPub = bundle.optString("identitySignKey", "")
+            val spk = bundle.optJSONObject("signedPreKey") ?: return null
+            val spkPub = spk.optString("publicKey", "")
+            val spkSig = spk.optString("signature", "")
+
+            if (spkPub.isBlank() || signPub.isBlank() || spkSig.isBlank()) return null
+            if (!DevE2ee.verifySignedPreKey(signPub, spkPub, spkSig)) return null
+            spkPub
         } catch (_: Exception) {
             null
         }
