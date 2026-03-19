@@ -919,10 +919,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun acceptIncomingCounter(prefs: android.content.SharedPreferences, counter: Int, window: Int = 64): Boolean {
-        val maxIn = prefs.getInt("e2ee_in_max", 0)
-        val seenRaw = prefs.getString("e2ee_in_seen", "").orEmpty()
-        val seen = seenRaw.split(',').mapNotNull { it.toIntOrNull() }.toMutableSet()
+    private fun loadSeenCounters(prefs: android.content.SharedPreferences, key: String): MutableSet<Int> {
+        val raw = prefs.getString(key, "").orEmpty()
+        if (raw.isBlank()) return mutableSetOf()
+        return try {
+            if (raw.trimStart().startsWith("[")) {
+                val arr = org.json.JSONArray(raw)
+                MutableList(arr.length()) { i -> arr.optInt(i, -1) }
+                    .filter { it > 0 }
+                    .toMutableSet()
+            } else {
+                raw.split(',').mapNotNull { it.toIntOrNull() }.filter { it > 0 }.toMutableSet()
+            }
+        } catch (_: Exception) {
+            mutableSetOf()
+        }
+    }
+
+    private fun saveSeenCounters(prefs: android.content.SharedPreferences, key: String, values: List<Int>) {
+        val arr = org.json.JSONArray()
+        values.forEach { arr.put(it) }
+        prefs.edit().putString(key, arr.toString()).apply()
+    }
+
+    private fun acceptIncomingCounter(prefs: android.content.SharedPreferences, counter: Int, sessionId: String = "openclaw-app-chat", window: Int = 64): Boolean {
+        val maxKey = "e2ee_in_max_${sessionId}"
+        val seenKey = "e2ee_in_seen_${sessionId}"
+
+        val maxIn = prefs.getInt(maxKey, 0)
+        val seen = loadSeenCounters(prefs, seenKey)
 
         if (counter <= 0) return false
         if (seen.contains(counter)) return false
@@ -933,10 +958,8 @@ class MainActivity : AppCompatActivity() {
         val floor = newMax - window
         val kept = seen.filter { it >= floor }.sorted()
 
-        prefs.edit()
-            .putInt("e2ee_in_max", newMax)
-            .putString("e2ee_in_seen", kept.joinToString(","))
-            .apply()
+        prefs.edit().putInt(maxKey, newMax).apply()
+        saveSeenCounters(prefs, seenKey, kept)
         return true
     }
 
