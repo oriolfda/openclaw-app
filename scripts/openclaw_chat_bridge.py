@@ -228,12 +228,37 @@ def _ratchet_store_path() -> str:
     return os.environ.get("OPENCLAW_APP_E2EE_RATCHET_STORE", "/mnt/apps/openclaw/e2ee/ratchet_store.json")
 
 
+def _ensure_session_chains(st: dict) -> dict:
+    send = st.setdefault("send", {})
+    recv = st.setdefault("recv", {})
+    send.setdefault("lastOut", 0)
+    recv.setdefault("maxIn", 0)
+    recv.setdefault("seenIn", [])
+    recv.setdefault("ratchetStep", 0)
+    recv.setdefault("lastPeerRatchetPub", "")
+    return st
+
+
 def _load_ratchet_store():
     path = _ratchet_store_path()
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                store = json.load(f)
+            sessions = store.setdefault("sessions", {})
+            for sid, st in list(sessions.items()):
+                if "send" not in st or "recv" not in st:
+                    st = {
+                        "send": {"lastOut": int(st.get("lastOut", 0))},
+                        "recv": {
+                            "maxIn": int(st.get("maxIn", 0)),
+                            "seenIn": st.get("seenIn", []),
+                            "ratchetStep": int(st.get("ratchetStep", 0)),
+                            "lastPeerRatchetPub": st.get("lastPeerRatchetPub", ""),
+                        },
+                    }
+                sessions[sid] = _ensure_session_chains(st)
+            return store
         except Exception:
             pass
     return {"sessions": {}}
@@ -249,10 +274,11 @@ def _save_ratchet_store(store: dict):
 def _ratchet_check_and_advance(session_id: str, inbound_counter: int, window: int = 64) -> bool:
     store = _load_ratchet_store()
     sessions = store.setdefault("sessions", {})
-    st = sessions.setdefault(session_id, {"maxIn": 0, "seenIn": [], "lastOut": 0, "ratchetStep": 0})
+    st = _ensure_session_chains(sessions.setdefault(session_id, {}))
+    recv = st["recv"]
 
-    max_in = int(st.get("maxIn", 0))
-    seen = set(int(x) for x in st.get("seenIn", []) if isinstance(x, int) or str(x).isdigit())
+    max_in = int(recv.get("maxIn", 0))
+    seen = set(int(x) for x in recv.get("seenIn", []) if isinstance(x, int) or str(x).isdigit())
 
     if inbound_counter <= 0:
         return False
@@ -266,8 +292,8 @@ def _ratchet_check_and_advance(session_id: str, inbound_counter: int, window: in
     floor = max_in - window
     seen = {c for c in seen if c >= floor}
 
-    st["maxIn"] = max_in
-    st["seenIn"] = sorted(seen)
+    recv["maxIn"] = max_in
+    recv["seenIn"] = sorted(seen)
     _save_ratchet_store(store)
     return True
 
@@ -275,9 +301,10 @@ def _ratchet_check_and_advance(session_id: str, inbound_counter: int, window: in
 def _ratchet_next_out_counter(session_id: str) -> int:
     store = _load_ratchet_store()
     sessions = store.setdefault("sessions", {})
-    st = sessions.setdefault(session_id, {"maxIn": 0, "seenIn": [], "lastOut": 0, "ratchetStep": 0})
-    nxt = int(st.get("lastOut", 0)) + 1
-    st["lastOut"] = nxt
+    st = _ensure_session_chains(sessions.setdefault(session_id, {}))
+    send = st["send"]
+    nxt = int(send.get("lastOut", 0)) + 1
+    send["lastOut"] = nxt
     _save_ratchet_store(store)
     return nxt
 
@@ -365,13 +392,14 @@ def encrypt_real_envelope(plaintext: str, key: bytes, ad: str = "") -> dict:
 def _ratchet_apply_peer_pub(session_id: str, peer_pub_b64: str) -> int:
     store = _load_ratchet_store()
     sessions = store.setdefault("sessions", {})
-    st = sessions.setdefault(session_id, {"maxIn": 0, "seenIn": [], "lastOut": 0, "ratchetStep": 0})
-    last_pub = st.get("lastPeerRatchetPub", "")
-    step = int(st.get("ratchetStep", 0))
+    st = _ensure_session_chains(sessions.setdefault(session_id, {}))
+    recv = st["recv"]
+    last_pub = recv.get("lastPeerRatchetPub", "")
+    step = int(recv.get("ratchetStep", 0))
     if peer_pub_b64 and peer_pub_b64 != last_pub:
         step += 1
-        st["lastPeerRatchetPub"] = peer_pub_b64
-        st["ratchetStep"] = step
+        recv["lastPeerRatchetPub"] = peer_pub_b64
+        recv["ratchetStep"] = step
         _save_ratchet_store(store)
     return step
 
