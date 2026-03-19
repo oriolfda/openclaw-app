@@ -945,21 +945,31 @@ class MainActivity : AppCompatActivity() {
     private fun acceptIncomingCounter(prefs: android.content.SharedPreferences, counter: Int, sessionId: String = "openclaw-app-chat", window: Int = 64): Boolean {
         val maxKey = "e2ee_in_max_${sessionId}"
         val seenKey = "e2ee_in_seen_${sessionId}"
+        val skippedKey = "e2ee_in_skipped_${sessionId}"
 
         val maxIn = prefs.getInt(maxKey, 0)
         val seen = loadSeenCounters(prefs, seenKey)
+        val skipped = loadSeenCounters(prefs, skippedKey)
 
         if (counter <= 0) return false
         if (seen.contains(counter)) return false
         if (counter < maxIn - window) return false
 
+        if (counter > maxIn + 1) {
+            for (c in (maxIn + 1) until counter) skipped.add(c)
+        }
+
         seen.add(counter)
+        skipped.remove(counter)
+
         val newMax = kotlin.math.max(maxIn, counter)
         val floor = newMax - window
-        val kept = seen.filter { it >= floor }.sorted()
+        val keptSeen = seen.filter { it >= floor }.sorted()
+        val keptSkipped = skipped.filter { it >= floor }.sorted()
 
         prefs.edit().putInt(maxKey, newMax).apply()
-        saveSeenCounters(prefs, seenKey, kept)
+        saveSeenCounters(prefs, seenKey, keptSeen)
+        saveSeenCounters(prefs, skippedKey, keptSkipped)
         return true
     }
 
