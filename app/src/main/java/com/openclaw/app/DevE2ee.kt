@@ -20,7 +20,7 @@ object DevE2ee {
         val responseKey: ByteArray,
     )
 
-    fun encryptForBridge(plaintext: String, bridgePublicKeyB64: String, ad: String): EncryptResult {
+    fun encryptForBridge(plaintext: String, bridgePublicKeyB64: String, ad: String, otkId: String? = null): EncryptResult {
         val kpg = KeyPairGenerator.getInstance("EC")
         kpg.initialize(256)
         val eph = kpg.generateKeyPair()
@@ -48,6 +48,7 @@ object DevE2ee {
             put("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
             put("ciphertext", Base64.encodeToString(ct, Base64.NO_WRAP))
             put("ad", ad)
+            if (!otkId.isNullOrBlank()) put("otkId", otkId)
             put("expectEncryptedReply", true)
         }
 

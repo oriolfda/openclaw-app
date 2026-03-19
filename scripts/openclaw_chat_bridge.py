@@ -171,6 +171,59 @@ def _bridge_keystore_path() -> str:
     return os.environ.get("OPENCLAW_APP_E2EE_KEYSTORE", "/mnt/apps/openclaw/e2ee/bridge_keys.json")
 
 
+def _otk_store_path() -> str:
+    return os.environ.get("OPENCLAW_APP_E2EE_OTK_STORE", "/mnt/apps/openclaw/e2ee/otk_store.json")
+
+
+def _load_otk_store():
+    path = _otk_store_path()
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"next": 1, "keys": []}
+
+
+def _save_otk_store(store: dict):
+    path = _otk_store_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(store, f, indent=2)
+
+
+def _ensure_otk_pool(min_size: int = 20):
+    store = _load_otk_store()
+    keys = store.get("keys", [])
+    next_id = int(store.get("next", 1))
+    while len(keys) < min_size:
+        keys.append({"id": f"otk-{next_id}", "publicKey": _BRIDGE_PUB_B64})
+        next_id += 1
+    store["keys"] = keys
+    store["next"] = next_id
+    _save_otk_store(store)
+
+
+def _consume_otk(otk_id: str) -> bool:
+    if not otk_id:
+        return False
+    store = _load_otk_store()
+    keys = store.get("keys", [])
+    kept = [k for k in keys if k.get("id") != otk_id]
+    consumed = len(kept) != len(keys)
+    if consumed:
+        store["keys"] = kept
+        _save_otk_store(store)
+    return consumed
+
+
+def _peek_otk_list(limit: int = 5):
+    _ensure_otk_pool()
+    store = _load_otk_store()
+    return (store.get("keys", []) or [])[:limit]
+
+
 def _load_or_create_bridge_keys():
     path = _bridge_keystore_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -220,6 +273,8 @@ _BRIDGE_SIGN_PUB_B64 = base64.b64encode(
     )
 ).decode("ascii")
 
+_ensure_otk_pool()
+
 
 def _decode_pubkey_spki(b64: str):
     raw = base64.b64decode(b64)
@@ -261,7 +316,7 @@ def decrypt_real_envelope(env: dict):
 
 def e2ee_bundle_payload() -> dict:
     signed_prekey_sig = base64.b64encode(_BRIDGE_SIGN_PRIVKEY.sign(base64.b64decode(_BRIDGE_PUB_B64))).decode("ascii")
-    one_time = [{"id": f"otk-{i+1}", "publicKey": _BRIDGE_PUB_B64} for i in range(5)]
+    one_time = _peek_otk_list(8)
     return {
         "ok": True,
         "e2ee": {
@@ -500,6 +555,9 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 message, reply_key, reply_ad = decrypt_real_envelope(e2ee_req)
                 message = message.strip()
+                otk_id = str(e2ee_req.get("otkId", "")).strip()
+                if otk_id:
+                    _consume_otk(otk_id)
             except Exception as e:
                 self._send(400, {"ok": False, "error": "e2ee_decrypt_failed", "details": str(e)})
                 return

@@ -810,7 +810,9 @@ class MainActivity : AppCompatActivity() {
 
                 val urls = extractUrls(message)
                 val payloadText = if (urls.isEmpty()) message else "$message\n\nURLs detectades: ${urls.joinToString(", ")}"
-                val bridgePub = fetchE2eeBridgePublicKey(endpoint, token)
+                val bridgeTarget = fetchE2eeBridgeTarget(endpoint, token)
+                val bridgePub = bridgeTarget?.first
+                val bridgeOtkId = bridgeTarget?.second
                 var encResult: DevE2ee.EncryptResult? = null
 
                 val payload = JSONObject().apply {
@@ -820,7 +822,7 @@ class MainActivity : AppCompatActivity() {
                     })
 
                     if (!bridgePub.isNullOrBlank()) {
-                        encResult = DevE2ee.encryptForBridge(payloadText, bridgePub, "openclaw-app-chat")
+                        encResult = DevE2ee.encryptForBridge(payloadText, bridgePub, "openclaw-app-chat", bridgeOtkId)
                         put("message", "")
                         put("e2ee", encResult!!.envelope)
                     } else {
@@ -903,7 +905,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchE2eeBridgePublicKey(endpoint: String, token: String): String? {
+    private fun fetchE2eeBridgeTarget(endpoint: String, token: String): Pair<String, String?>? {
         return try {
             val bundleUrl = endpoint.replace("/chat", "/e2ee/prekey-bundle")
             val conn = (URL(bundleUrl).openConnection() as HttpURLConnection).apply {
@@ -925,10 +927,14 @@ class MainActivity : AppCompatActivity() {
             val spk = bundle.optJSONObject("signedPreKey") ?: return null
             val spkPub = spk.optString("publicKey", "")
             val spkSig = spk.optString("signature", "")
+            val otkArr = bundle.optJSONArray("oneTimePreKeys")
+            val otkId = if (otkArr != null && otkArr.length() > 0) {
+                otkArr.optJSONObject(0)?.optString("id", "")?.ifBlank { null }
+            } else null
 
             if (spkPub.isBlank() || signPub.isBlank() || spkSig.isBlank()) return null
             if (!DevE2ee.verifySignedPreKey(signPub, spkPub, spkSig)) return null
-            spkPub
+            Pair(spkPub, otkId)
         } catch (_: Exception) {
             null
         }
