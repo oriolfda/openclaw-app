@@ -448,7 +448,7 @@ def encrypt_real_envelope(plaintext: str, key: bytes, ad: str = "") -> dict:
     }
 
 
-def _ratchet_apply_peer_pub(session_id: str, peer_pub_b64: str) -> int:
+def _ratchet_apply_peer_pub(session_id: str, peer_pub_b64: str, mix_material: bytes = b"") -> int:
     store = _load_ratchet_store()
     sessions = store.setdefault("sessions", {})
     st = _ensure_session_chains(sessions.setdefault(session_id, {}))
@@ -459,6 +459,10 @@ def _ratchet_apply_peer_pub(session_id: str, peer_pub_b64: str) -> int:
         step += 1
         recv["lastPeerRatchetPub"] = peer_pub_b64
         recv["ratchetStep"] = step
+        if mix_material:
+            import hashlib
+            root_prev = base64.b64decode(st.get("rootKeySeed", "")) if st.get("rootKeySeed", "") else b""
+            st["rootKeySeed"] = base64.b64encode(hashlib.sha256(root_prev + mix_material + step.to_bytes(4, "big")).digest()).decode("ascii")
         _save_ratchet_store(store)
     return step
 
@@ -477,12 +481,7 @@ def decrypt_real_envelope(env: dict, session_id: str):
     shared = _BRIDGE_PRIVKEY.exchange(ec.ECDH(), eph_pub)
     base_key = _hkdf_key(shared, salt)
 
-    _ratchet_apply_peer_pub(session_id, ratchet_b64)
-    store = _load_ratchet_store()
-    sessions = store.setdefault("sessions", {})
-    st = _ensure_session_chains(sessions.setdefault(session_id, {}))
-    st["recv"]["currentHeaderId"] = header_id
-    _save_ratchet_store(store)
+    ratchet_shared = b""
     if ratchet_b64:
         try:
             ratchet_pub = _decode_pubkey_spki(ratchet_b64)
@@ -492,6 +491,15 @@ def decrypt_real_envelope(env: dict, session_id: str):
             base_key = _hkdf_key(base_key + ratchet_shared, mix_salt)
         except Exception:
             pass
+
+    _ratchet_apply_peer_pub(session_id, ratchet_b64, mix_material=base_key + ratchet_shared)
+    store = _load_ratchet_store()
+    sessions = store.setdefault("sessions", {})
+    st = _ensure_session_chains(sessions.setdefault(session_id, {}))
+    st["recv"]["currentHeaderId"] = header_id
+    if not st.get("recvChainSeed"):
+        st["recvChainSeed"] = base64.b64encode(base_key).decode("ascii")
+    _save_ratchet_store(store)
 
     base_key = _ratchet_mix_chain_key(session_id, base_key, "c2s", counter)
     recv_chain_key = _derive_chain_key(base_key, "recv")
