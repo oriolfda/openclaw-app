@@ -324,6 +324,22 @@ def _ratchet_next_out_counter(session_id: str) -> int:
     return nxt
 
 
+def _ratchet_mix_chain_key(session_id: str, base_key: bytes, direction: str, counter: int) -> bytes:
+    import hashlib
+    store = _load_ratchet_store()
+    sessions = store.setdefault("sessions", {})
+    st = _ensure_session_chains(sessions.setdefault(session_id, {}))
+    chain_box = st["recv"] if direction == "c2s" else st["send"]
+    key_name = "recvChainKey" if direction == "c2s" else "sendChainKey"
+
+    prev_b64 = chain_box.get(key_name, "")
+    prev = base64.b64decode(prev_b64) if prev_b64 else base_key
+    mixed = hashlib.sha256(prev + base_key + direction.encode("utf-8") + str(counter).encode("utf-8")).digest()
+    chain_box[key_name] = base64.b64encode(mixed).decode("ascii")
+    _save_ratchet_store(store)
+    return mixed
+
+
 def _load_or_create_bridge_keys():
     path = _bridge_keystore_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -443,6 +459,7 @@ def decrypt_real_envelope(env: dict, session_id: str):
         except Exception:
             pass
 
+    base_key = _ratchet_mix_chain_key(session_id, base_key, "c2s", counter)
     key = _derive_message_key(base_key, counter, "c2s")
     aes = AESGCM(key)
     pt = aes.decrypt(iv, ct, ad.encode("utf-8")).decode("utf-8")
@@ -840,6 +857,7 @@ class Handler(BaseHTTPRequestHandler):
 
             if e2ee_req and encrypted_reply and reply_key is not None:
                 out_counter = _ratchet_next_out_counter(session_id)
+                reply_key = _ratchet_mix_chain_key(session_id, reply_key, "s2c", out_counter)
                 msg_key = _derive_message_key(reply_key, out_counter, "s2c")
                 envelope = encrypt_real_envelope(reply, key=msg_key, ad=(reply_ad or session_id))
                 envelope["counter"] = out_counter
