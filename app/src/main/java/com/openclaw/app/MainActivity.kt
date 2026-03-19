@@ -807,15 +807,19 @@ class MainActivity : AppCompatActivity() {
             try {
                 val prefs = getSharedPreferences("openclaw_app_prefs", MODE_PRIVATE)
                 val showTranscriptions = prefs.getBoolean("show_transcriptions", true)
+                val useE2ee = prefs.getBoolean("e2ee_enabled", false)
 
                 val urls = extractUrls(message)
                 val payloadText = if (urls.isEmpty()) message else "$message\n\nURLs detectades: ${urls.joinToString(", ")}"
                 val payload = JSONObject().apply {
-                    put("message", payloadText)
+                    put("message", if (useE2ee) "" else payloadText)
                     put("sessionId", "openclaw-app-chat")
                     put("prefs", JSONObject().apply {
                         put("showTranscription", showTranscriptions)
                     })
+                    if (useE2ee) {
+                        put("e2ee", DevE2ee.encrypt(token, payloadText, "openclaw-app-chat"))
+                    }
                     attachment?.let {
                         put("attachment", JSONObject().apply {
                             put("name", it.name)
@@ -846,7 +850,16 @@ class MainActivity : AppCompatActivity() {
                     val prefs = getSharedPreferences("openclaw_app_prefs", MODE_PRIVATE)
                     val showTranscriptions = prefs.getBoolean("show_transcriptions", true)
 
-                    val assistantTextRaw = parseAssistantText(body, code)
+                    val assistantTextRaw = try {
+                        val obj = JSONObject(body)
+                        if (obj.has("e2eeReply")) {
+                            DevE2ee.decrypt(token, obj.getJSONObject("e2eeReply"))
+                        } else {
+                            parseAssistantText(body, code)
+                        }
+                    } catch (_: Exception) {
+                        parseAssistantText(body, code)
+                    }
                     val mediaUrl = try {
                         JSONObject(body).optString("mediaUrl", "")
                     } catch (_: Exception) { "" }

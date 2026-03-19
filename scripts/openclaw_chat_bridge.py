@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -160,6 +161,51 @@ def synthesize_tts_audio(text: str, lang_hint: str = "ca"):
 
 def b64rand(n: int) -> str:
     return base64.urlsafe_b64encode(os.urandom(n)).decode("ascii").rstrip("=")
+
+
+def derive_dev_key() -> bytes:
+    seed = TOKEN or "openclaw-dev-e2ee"
+    return hashlib.sha256(seed.encode("utf-8")).digest()
+
+
+def _keystream(key: bytes, nonce: bytes, n: int) -> bytes:
+    out = bytearray()
+    counter = 0
+    while len(out) < n:
+        out.extend(hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest())
+        counter += 1
+    return bytes(out[:n])
+
+
+def encrypt_dev_envelope(plaintext: str, ad: str = "") -> dict:
+    key = derive_dev_key()
+    nonce = os.urandom(12)
+    pt = plaintext.encode("utf-8")
+    ks = _keystream(key, nonce, len(pt))
+    ct = bytes(a ^ b for a, b in zip(pt, ks))
+    mac = hashlib.sha256(key + nonce + ct + ad.encode("utf-8")).digest()[:16]
+    return {
+        "v": 1,
+        "alg": "dev-sha256-stream-v1",
+        "nonce": base64.b64encode(nonce).decode("ascii"),
+        "ciphertext": base64.b64encode(ct).decode("ascii"),
+        "mac": base64.b64encode(mac).decode("ascii"),
+        "ad": ad,
+    }
+
+
+def decrypt_dev_envelope(env: dict) -> str:
+    key = derive_dev_key()
+    nonce = base64.b64decode(env.get("nonce", ""))
+    ct = base64.b64decode(env.get("ciphertext", ""))
+    ad = env.get("ad", "")
+    mac = base64.b64decode(env.get("mac", ""))
+    calc = hashlib.sha256(key + nonce + ct + str(ad).encode("utf-8")).digest()[:16]
+    if mac != calc:
+        raise ValueError("invalid_mac")
+    ks = _keystream(key, nonce, len(ct))
+    pt = bytes(a ^ b for a, b in zip(ct, ks))
+    return pt.decode("utf-8")
 
 
 def e2ee_bundle_payload() -> dict:
@@ -397,7 +443,17 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        e2ee_req = data.get("e2ee") if isinstance(data.get("e2ee"), dict) else None
+        encrypted_reply = bool(e2ee_req.get("expectEncryptedReply", False)) if e2ee_req else False
+
         message = (data.get("message") or "").strip()
+        if e2ee_req and (not message) and e2ee_req.get("ciphertext"):
+            try:
+                message = decrypt_dev_envelope(e2ee_req).strip()
+            except Exception as e:
+                self._send(400, {"ok": False, "error": "e2ee_decrypt_failed", "details": str(e)})
+                return
+
         session_id = (data.get("sessionId") or DEFAULT_SESSION).strip() or DEFAULT_SESSION
         attachment = data.get("attachment") if isinstance(data.get("attachment"), dict) else None
         prefs = data.get("prefs") if isinstance(data.get("prefs"), dict) else {}
@@ -497,6 +553,12 @@ class Handler(BaseHTTPRequestHandler):
             payload = {"ok": True, "reply": reply, "sessionId": session_id}
             if media_url:
                 payload["mediaUrl"] = media_url
+
+            if e2ee_req and encrypted_reply:
+                envelope = encrypt_dev_envelope(reply, ad=session_id)
+                payload["e2eeReply"] = envelope
+                payload["reply"] = ""
+
             self._send(200, payload)
         except subprocess.TimeoutExpired:
             self._send(504, {"ok": False, "error": "timeout"})
