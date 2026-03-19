@@ -33,12 +33,26 @@ Abans de res, pensa aquests punts:
   - crea una carpeta compartida de treball/comunicació (APK, captures, logs, errors)
   - és molt útil per descarregar APK des del mòbil i reportar incidències de prova
 
-### Pas 2 — Dona aquest repo al teu assistent OpenClaw
-Passa-li l’enllaç del teu fork (o d’aquest repo) i digues-li:
+### Pas 2 — Crea TU el repo i dona accés segur a l’assistent
+Recomanació: que el **repo sigui teu** (GitHub de l’humà) i no de l’assistent.
+
+Flux recomanat:
+1. Crea un repo nou (p. ex. `openclaw-app`)
+2. Afegeix una **deploy key** (preferiblement amb escriptura si l’assistent ha de fer push)
+3. Comparteix amb l’assistent:
+   - URL del repo
+   - ruta/localització de la clau SSH (al host on treballa l’assistent)
+
+Exemple breu (GitHub):
+- Repository → **Settings** → **Deploy keys** → **Add deploy key**
+- Enganxa la clau pública (`*.pub`) i activa **Allow write access** si vols que l’assistent pugi canvis.
+
+### Pas 3 — Dona aquest repo al teu assistent OpenClaw
+Passa-li l’enllaç del repo i digues-li:
 
 > “Vull una rèplica personalitzada de l’OpenClaw App. Segueix la guia `docs/OPENCLAW_AI_REPLICA.md`, canvia nom+icona+tema+idioma, compila APK release i deixa’m el fitxer llest per instal·lar.”
 
-### Pas 3 — Prova l’APK i dona feedback
+### Pas 4 — Prova l’APK i dona feedback
 Quan l’assistent et passi l’APK:
 
 - instal·la-la al mòbil
