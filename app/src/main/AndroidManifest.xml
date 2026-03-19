@@ -6,8 +6,8 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/openclaw_app_app"
-        android:roundIcon="@drawable/openclaw_app_app"
+        android:icon="@drawable/openclaw_app"
+        android:roundIcon="@drawable/openclaw_app"
         android:label="OpenClaw App"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"

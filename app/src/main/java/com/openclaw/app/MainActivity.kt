@@ -73,7 +73,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pendingAttachmentPreview: ImageView
     private lateinit var pendingAttachmentText: TextView
     private lateinit var cancelAttachmentButton: Button
-    private lateinit var playLastAudioButton: Button
     private lateinit var micButton: ImageButton
     private lateinit var recordingControlsRow: LinearLayout
     private lateinit var recordDeleteButton: ImageButton
@@ -85,8 +84,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: ChatAdapter
     private val messages = mutableListOf<ChatMessage>()
     private var pendingAttachment: AttachmentData? = null
-    private val sentAudioFiles = mutableListOf<File>()
-    private var lastSentAudioFile: File? = null
     private var mediaPlayer: MediaPlayer? = null
     private var currentPlayingTs: Long? = null
     private var appliedUiLocale: String = "auto"
@@ -150,7 +147,6 @@ class MainActivity : AppCompatActivity() {
         pendingAttachmentPreview = findViewById(R.id.pendingAttachmentPreview)
         pendingAttachmentText = findViewById(R.id.pendingAttachmentText)
         cancelAttachmentButton = findViewById(R.id.cancelAttachmentButton)
-        playLastAudioButton = findViewById(R.id.playLastAudioButton)
         micButton = findViewById(R.id.micButton)
         recordingControlsRow = findViewById(R.id.recordingControlsRow)
         recordDeleteButton = findViewById(R.id.recordDeleteButton)
@@ -253,10 +249,6 @@ class MainActivity : AppCompatActivity() {
             statusText.text = getString(R.string.attachment_removed)
         }
 
-        playLastAudioButton.setOnClickListener {
-            showSentAudiosDialog()
-        }
-
         micButton.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -341,12 +333,6 @@ class MainActivity : AppCompatActivity() {
                     val f = File(cacheDir, "sent-audio-${System.currentTimeMillis()}.m4a")
                     f.writeBytes(bytes)
                     sentAudioPath = f.absolutePath
-                    lastSentAudioFile = f
-                    sentAudioFiles.add(0, f)
-                    if (sentAudioFiles.size > 50) {
-                        sentAudioFiles.removeLastOrNull()?.delete()
-                    }
-                    playLastAudioButton.visibility = View.VISIBLE
                 } catch (_: Exception) {
                 }
             } else if (attachmentToSend?.mime?.startsWith("image/") == true) {
@@ -534,22 +520,6 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { statusText.text = getString(R.string.attachment_error, e.message) }
             }
         }
-    }
-
-    private fun showSentAudiosDialog() {
-        val list = sentAudioFiles.filter { it.exists() }
-        if (list.isEmpty()) {
-            statusText.text = getString(R.string.no_sent_audios)
-            return
-        }
-        val labels = list.mapIndexed { idx, f -> "${idx + 1}. ${f.name}" }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.sent_audios_title))
-            .setItems(labels) { _, which ->
-                playLocalAudio(list[which])
-            }
-            .setNegativeButton(getString(R.string.close), null)
-            .show()
     }
 
     private fun toggleAudioPlayback(msg: ChatMessage) {

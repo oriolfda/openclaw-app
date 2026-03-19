@@ -17,6 +17,8 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
+import java.util.Locale
+import kotlin.concurrent.thread
 
 class ChatAdapter(
     private val items: MutableList<ChatMessage>,
@@ -27,6 +29,8 @@ class ChatAdapter(
 
     private var playingMessageTs: Long? = null
     private var showTranscriptionOption: Boolean = false
+    private val durationCache = mutableMapOf<Long, String>()
+    private val durationLoading = mutableSetOf<Long>()
 
     companion object {
         private const val VIEW_USER = 1
@@ -64,8 +68,10 @@ class ChatAdapter(
     class AudioVH(view: View) : RecyclerView.ViewHolder(view) {
         val bubble: View = view.findViewById(R.id.audioBubble)
         val play: ImageButton = view.findViewById(R.id.audioPlayButton)
+        val wave: ImageView = view.findViewById(R.id.audioWaveImage)
         val transcribe: ImageButton = view.findViewById(R.id.audioTranscribeButton)
         val duration: TextView = view.findViewById(R.id.audioDurationText)
+        val caption: TextView = view.findViewById(R.id.audioCaptionText)
         val transcript: TextView = view.findViewById(R.id.audioTranscriptText)
     }
 
@@ -175,14 +181,29 @@ class ChatAdapter(
             }
             is AudioVH -> {
                 val item = items[position]
-                holder.bubble.setBackgroundResource(theme.botBubble)
+                if (item.role == "user") {
+                    holder.bubble.setBackgroundResource(theme.userBubble)
+                    holder.caption.setTextColor(theme.userText)
+                } else {
+                    holder.bubble.setBackgroundResource(theme.botBubble)
+                    holder.caption.setTextColor(theme.botText)
+                }
 
                 val playIcon = if (playingMessageTs == item.ts) R.drawable.ic_pause_min else R.drawable.ic_play_min
                 holder.play.setImageResource(playIcon)
-                holder.play.setColorFilter(theme.botText)
+                holder.play.setColorFilter(0xFFFFFFFF.toInt())
                 holder.play.setOnClickListener { onMessageClick?.invoke(item) }
+                holder.wave.alpha = if (playingMessageTs == item.ts) 1f else 0.85f
 
-                holder.duration.text = "0:00"
+                holder.caption.text = if (item.text.isBlank()) "Àudio" else item.text
+
+                val cachedDuration = durationCache[item.ts]
+                if (cachedDuration != null) {
+                    holder.duration.text = cachedDuration
+                } else {
+                    holder.duration.text = "--:--"
+                    resolveDurationAsync(item)
+                }
                 holder.duration.setTextColor(theme.statusColor)
 
                 holder.transcribe.visibility = if (showTranscriptionOption) View.VISIBLE else View.GONE
@@ -210,6 +231,46 @@ class ChatAdapter(
                 startTypingAnimation(holder)
             }
         }
+    }
+
+    private fun resolveDurationAsync(item: ChatMessage) {
+        if (durationCache.containsKey(item.ts) || durationLoading.contains(item.ts)) return
+        durationLoading.add(item.ts)
+
+        thread {
+            val resolved = resolveDuration(item)
+            durationCache[item.ts] = resolved
+            durationLoading.remove(item.ts)
+            val idx = items.indexOfFirst { it.ts == item.ts }
+            if (idx >= 0) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    notifyItemChanged(idx)
+                }
+            }
+        }
+    }
+
+    private fun resolveDuration(item: ChatMessage): String {
+        return try {
+            val mmr = MediaMetadataRetriever()
+            when {
+                !item.audioPath.isNullOrBlank() -> mmr.setDataSource(item.audioPath)
+                !item.audioUrl.isNullOrBlank() -> mmr.setDataSource(item.audioUrl, hashMapOf())
+                else -> return "0:00"
+            }
+            val ms = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            mmr.release()
+            formatDuration(ms)
+        } catch (_: Exception) {
+            "0:00"
+        }
+    }
+
+    private fun formatDuration(ms: Long): String {
+        val totalSec = (ms / 1000L).toInt().coerceAtLeast(0)
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        return String.format(Locale.getDefault(), "%d:%02d", min, sec)
     }
 
     private fun startTypingAnimation(holder: TypingVH) {
