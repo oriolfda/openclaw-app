@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import base64
-import hashlib
 import json
 import os
 import shutil
@@ -8,6 +7,11 @@ import subprocess
 import tempfile
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 HOST = os.environ.get("OPENCLAW_APP_BRIDGE_HOST", "0.0.0.0")
 PORT = int(os.environ.get("OPENCLAW_APP_BRIDGE_PORT", "8091"))
@@ -163,59 +167,55 @@ def b64rand(n: int) -> str:
     return base64.urlsafe_b64encode(os.urandom(n)).decode("ascii").rstrip("=")
 
 
-def derive_dev_key() -> bytes:
-    seed = TOKEN or "openclaw-dev-e2ee"
-    return hashlib.sha256(seed.encode("utf-8")).digest()
+_BRIDGE_PRIVKEY = ec.generate_private_key(ec.SECP256R1())
+_BRIDGE_PUB_B64 = base64.b64encode(
+    _BRIDGE_PRIVKEY.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+).decode("ascii")
 
 
-def _keystream(key: bytes, nonce: bytes, n: int) -> bytes:
-    out = bytearray()
-    counter = 0
-    while len(out) < n:
-        out.extend(hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest())
-        counter += 1
-    return bytes(out[:n])
+def _decode_pubkey_spki(b64: str):
+    raw = base64.b64decode(b64)
+    return serialization.load_der_public_key(raw)
 
 
-def encrypt_dev_envelope(plaintext: str, ad: str = "") -> dict:
-    key = derive_dev_key()
-    nonce = os.urandom(12)
-    pt = plaintext.encode("utf-8")
-    ks = _keystream(key, nonce, len(pt))
-    ct = bytes(a ^ b for a, b in zip(pt, ks))
-    mac = hashlib.sha256(key + nonce + ct + ad.encode("utf-8")).digest()[:16]
+def _hkdf_key(shared: bytes, salt: bytes) -> bytes:
+    hkdf = HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=b"openclaw-e2ee-v1")
+    return hkdf.derive(shared)
+
+
+def encrypt_real_envelope(plaintext: str, key: bytes, ad: str = "") -> dict:
+    iv = os.urandom(12)
+    aes = AESGCM(key)
+    ct = aes.encrypt(iv, plaintext.encode("utf-8"), ad.encode("utf-8"))
     return {
         "v": 1,
-        "alg": "dev-sha256-stream-v1",
-        "nonce": base64.b64encode(nonce).decode("ascii"),
+        "alg": "ecdh-p256-aesgcm-v1",
+        "iv": base64.b64encode(iv).decode("ascii"),
         "ciphertext": base64.b64encode(ct).decode("ascii"),
-        "mac": base64.b64encode(mac).decode("ascii"),
         "ad": ad,
     }
 
 
-def decrypt_dev_envelope(env: dict) -> str:
-    key = derive_dev_key()
-    nonce = base64.b64decode(env.get("nonce", ""))
+def decrypt_real_envelope(env: dict):
+    eph_b64 = env.get("ephemeralPub", "")
+    salt = base64.b64decode(env.get("salt", ""))
+    iv = base64.b64decode(env.get("iv", ""))
     ct = base64.b64decode(env.get("ciphertext", ""))
-    ad = env.get("ad", "")
-    mac = base64.b64decode(env.get("mac", ""))
-    calc = hashlib.sha256(key + nonce + ct + str(ad).encode("utf-8")).digest()[:16]
-    if mac != calc:
-        raise ValueError("invalid_mac")
-    ks = _keystream(key, nonce, len(ct))
-    pt = bytes(a ^ b for a, b in zip(ct, ks))
-    return pt.decode("utf-8")
+    ad = str(env.get("ad", ""))
+
+    eph_pub = _decode_pubkey_spki(eph_b64)
+    shared = _BRIDGE_PRIVKEY.exchange(ec.ECDH(), eph_pub)
+    key = _hkdf_key(shared, salt)
+    aes = AESGCM(key)
+    pt = aes.decrypt(iv, ct, ad.encode("utf-8")).decode("utf-8")
+    return pt, key, ad
 
 
 def e2ee_bundle_payload() -> dict:
-    identity = E2EE_IDENTITY_PUB or f"dev-id-{b64rand(32)}"
-    spk = E2EE_SIGNED_PREKEY_PUB or f"dev-spk-{b64rand(32)}"
-    sig = E2EE_SIGNED_PREKEY_SIG or f"dev-sig-{b64rand(48)}"
-    one_time = [
-        {"id": f"otk-{i+1}", "publicKey": f"dev-otk-{b64rand(32)}"}
-        for i in range(5)
-    ]
+    one_time = [{"id": f"otk-{i+1}", "publicKey": _BRIDGE_PUB_B64} for i in range(5)]
     return {
         "ok": True,
         "e2ee": {
@@ -224,15 +224,15 @@ def e2ee_bundle_payload() -> dict:
             "protocol": E2EE_PROTOCOL,
             "bundle": {
                 "kid": E2EE_BUNDLE_KID,
-                "identityKey": identity,
+                "identityKey": _BRIDGE_PUB_B64,
                 "signedPreKey": {
                     "id": f"spk-{E2EE_BUNDLE_KID}",
-                    "publicKey": spk,
-                    "signature": sig,
+                    "publicKey": _BRIDGE_PUB_B64,
+                    "signature": E2EE_SIGNED_PREKEY_SIG or "runtime-generated",
                 },
                 "oneTimePreKeys": one_time,
             },
-            "warning": "Development bundle format (stage B bootstrap)."
+            "warning": "Runtime P-256 keypair (replace with persistent signed prekeys for production)."
         }
     }
 
@@ -445,11 +445,14 @@ class Handler(BaseHTTPRequestHandler):
 
         e2ee_req = data.get("e2ee") if isinstance(data.get("e2ee"), dict) else None
         encrypted_reply = bool(e2ee_req.get("expectEncryptedReply", False)) if e2ee_req else False
+        reply_key = None
+        reply_ad = ""
 
         message = (data.get("message") or "").strip()
         if e2ee_req and (not message) and e2ee_req.get("ciphertext"):
             try:
-                message = decrypt_dev_envelope(e2ee_req).strip()
+                message, reply_key, reply_ad = decrypt_real_envelope(e2ee_req)
+                message = message.strip()
             except Exception as e:
                 self._send(400, {"ok": False, "error": "e2ee_decrypt_failed", "details": str(e)})
                 return
@@ -554,8 +557,8 @@ class Handler(BaseHTTPRequestHandler):
             if media_url:
                 payload["mediaUrl"] = media_url
 
-            if e2ee_req and encrypted_reply:
-                envelope = encrypt_dev_envelope(reply, ad=session_id)
+            if e2ee_req and encrypted_reply and reply_key is not None:
+                envelope = encrypt_real_envelope(reply, key=reply_key, ad=(reply_ad or session_id))
                 payload["e2eeReply"] = envelope
                 payload["reply"] = ""
 

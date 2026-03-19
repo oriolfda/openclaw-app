@@ -44,10 +44,11 @@ Implement end-to-end encryption for app↔bridge communications inspired by Sign
 - [x] Add bridge prekey bundle endpoint (`/e2ee/prekey-bundle`) for capability bootstrap.
 - [ ] Replace development key material with real X25519/Ed25519 primitives and signed rotation.
 
-### Stage C (bootstrap implemented in this branch)
-- [x] Add encrypted `/chat` envelope path and bridge-side decryption pipeline (development algorithm).
+### Stage C (implemented in this branch)
+- [x] Add encrypted `/chat` envelope path and bridge-side decryption pipeline.
 - [x] Add encrypted response envelope path (`e2eeReply`) and client-side decryption.
-- [ ] Replace development algorithm with production X25519+AEAD ratchet payload.
+- [x] Replace dev stream cipher with real ECDH P-256 + HKDF-SHA256 + AES-256-GCM.
+- [ ] Migrate to full Signal Double Ratchet lifecycle (Stage E-hardening).
 
 ### Stage D
 - Add attachment encryption and transcript/TTS path compatibility.

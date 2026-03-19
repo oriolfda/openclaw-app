@@ -807,19 +807,26 @@ class MainActivity : AppCompatActivity() {
             try {
                 val prefs = getSharedPreferences("openclaw_app_prefs", MODE_PRIVATE)
                 val showTranscriptions = prefs.getBoolean("show_transcriptions", true)
-                val useE2ee = prefs.getBoolean("e2ee_enabled", false)
 
                 val urls = extractUrls(message)
                 val payloadText = if (urls.isEmpty()) message else "$message\n\nURLs detectades: ${urls.joinToString(", ")}"
+                val bridgePub = fetchE2eeBridgePublicKey(endpoint, token)
+                var encResult: DevE2ee.EncryptResult? = null
+
                 val payload = JSONObject().apply {
-                    put("message", if (useE2ee) "" else payloadText)
                     put("sessionId", "openclaw-app-chat")
                     put("prefs", JSONObject().apply {
                         put("showTranscription", showTranscriptions)
                     })
-                    if (useE2ee) {
-                        put("e2ee", DevE2ee.encrypt(token, payloadText, "openclaw-app-chat"))
+
+                    if (!bridgePub.isNullOrBlank()) {
+                        encResult = DevE2ee.encryptForBridge(payloadText, bridgePub, "openclaw-app-chat")
+                        put("message", "")
+                        put("e2ee", encResult!!.envelope)
+                    } else {
+                        put("message", payloadText)
                     }
+
                     attachment?.let {
                         put("attachment", JSONObject().apply {
                             put("name", it.name)
@@ -852,8 +859,8 @@ class MainActivity : AppCompatActivity() {
 
                     val assistantTextRaw = try {
                         val obj = JSONObject(body)
-                        if (obj.has("e2eeReply")) {
-                            DevE2ee.decrypt(token, obj.getJSONObject("e2eeReply"))
+                        if (obj.has("e2eeReply") && encResult != null) {
+                            DevE2ee.decryptWithKey(encResult!!.responseKey, obj.getJSONObject("e2eeReply"))
                         } else {
                             parseAssistantText(body, code)
                         }
@@ -893,6 +900,31 @@ class MainActivity : AppCompatActivity() {
                     scrollBottom()
                 }
             }
+        }
+    }
+
+    private fun fetchE2eeBridgePublicKey(endpoint: String, token: String): String? {
+        return try {
+            val bundleUrl = endpoint.replace("/chat", "/e2ee/prekey-bundle")
+            val conn = (URL(bundleUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                setRequestProperty("Authorization", "Bearer $token")
+                connectTimeout = 8000
+                readTimeout = 10000
+            }
+            val code = conn.responseCode
+            val body = if (code in 200..299) conn.inputStream.bufferedReader().use(BufferedReader::readText)
+            else conn.errorStream?.bufferedReader()?.use(BufferedReader::readText).orEmpty()
+            conn.disconnect()
+            if (code !in 200..299) return null
+
+            val obj = JSONObject(body)
+            val e2ee = obj.optJSONObject("e2ee") ?: return null
+            val bundle = e2ee.optJSONObject("bundle") ?: return null
+            val spk = bundle.optJSONObject("signedPreKey")
+            spk?.optString("publicKey", "")?.ifBlank { null }
+        } catch (_: Exception) {
+            null
         }
     }
 
