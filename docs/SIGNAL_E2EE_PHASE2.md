@@ -53,6 +53,12 @@ Implement end-to-end encryption for app↔bridge communications inspired by Sign
 ### Stage D
 - Add attachment encryption and transcript/TTS path compatibility.
 
+### Phase 3 progress (current)
+- [x] Monotonic counter in encrypted envelopes.
+- [x] Bridge replay/reorder rejection using persistent ratchet counter state.
+- [x] One-time prekey consumption integrated with request envelopes.
+- [ ] Full Double Ratchet chain/message key evolution.
+
 ### Stage E
 - Remove plaintext path in strict deployments.
 

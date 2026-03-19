@@ -822,7 +822,9 @@ class MainActivity : AppCompatActivity() {
                     })
 
                     if (!bridgePub.isNullOrBlank()) {
-                        encResult = DevE2ee.encryptForBridge(payloadText, bridgePub, "openclaw-app-chat", bridgeOtkId)
+                        val nextCounter = prefs.getInt("e2ee_send_counter", 0) + 1
+                        prefs.edit().putInt("e2ee_send_counter", nextCounter).apply()
+                        encResult = DevE2ee.encryptForBridge(payloadText, bridgePub, "openclaw-app-chat", bridgeOtkId, nextCounter)
                         put("message", "")
                         put("e2ee", encResult!!.envelope)
                     } else {
@@ -862,7 +864,15 @@ class MainActivity : AppCompatActivity() {
                     val assistantTextRaw = try {
                         val obj = JSONObject(body)
                         if (obj.has("e2eeReply") && encResult != null) {
-                            DevE2ee.decryptWithKey(encResult!!.responseKey, obj.getJSONObject("e2eeReply"))
+                            val env = obj.getJSONObject("e2eeReply")
+                            val inCounter = env.optInt("counter", 0)
+                            val lastIn = prefs.getInt("e2ee_last_in_counter", 0)
+                            if (inCounter > 0 && inCounter <= lastIn) {
+                                "[E2EE] Response dropped due to non-monotonic counter"
+                            } else {
+                                if (inCounter > 0) prefs.edit().putInt("e2ee_last_in_counter", inCounter).apply()
+                                DevE2ee.decryptWithKey(encResult!!.responseKey, env)
+                            }
                         } else {
                             parseAssistantText(body, code)
                         }

@@ -224,6 +224,50 @@ def _peek_otk_list(limit: int = 5):
     return (store.get("keys", []) or [])[:limit]
 
 
+def _ratchet_store_path() -> str:
+    return os.environ.get("OPENCLAW_APP_E2EE_RATCHET_STORE", "/mnt/apps/openclaw/e2ee/ratchet_store.json")
+
+
+def _load_ratchet_store():
+    path = _ratchet_store_path()
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"sessions": {}}
+
+
+def _save_ratchet_store(store: dict):
+    path = _ratchet_store_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(store, f, indent=2)
+
+
+def _ratchet_check_and_advance(session_id: str, inbound_counter: int) -> bool:
+    store = _load_ratchet_store()
+    sessions = store.setdefault("sessions", {})
+    st = sessions.setdefault(session_id, {"lastIn": -1, "lastOut": 0})
+    last_in = int(st.get("lastIn", -1))
+    if inbound_counter <= last_in:
+        return False
+    st["lastIn"] = inbound_counter
+    _save_ratchet_store(store)
+    return True
+
+
+def _ratchet_next_out_counter(session_id: str) -> int:
+    store = _load_ratchet_store()
+    sessions = store.setdefault("sessions", {})
+    st = sessions.setdefault(session_id, {"lastIn": -1, "lastOut": 0})
+    nxt = int(st.get("lastOut", 0)) + 1
+    st["lastOut"] = nxt
+    _save_ratchet_store(store)
+    return nxt
+
+
 def _load_or_create_bridge_keys():
     path = _bridge_keystore_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -305,13 +349,14 @@ def decrypt_real_envelope(env: dict):
     iv = base64.b64decode(env.get("iv", ""))
     ct = base64.b64decode(env.get("ciphertext", ""))
     ad = str(env.get("ad", ""))
+    counter = int(env.get("counter", 0))
 
     eph_pub = _decode_pubkey_spki(eph_b64)
     shared = _BRIDGE_PRIVKEY.exchange(ec.ECDH(), eph_pub)
     key = _hkdf_key(shared, salt)
     aes = AESGCM(key)
     pt = aes.decrypt(iv, ct, ad.encode("utf-8")).decode("utf-8")
-    return pt, key, ad
+    return pt, key, ad, counter
 
 
 def e2ee_bundle_payload() -> dict:
@@ -549,11 +594,12 @@ class Handler(BaseHTTPRequestHandler):
         encrypted_reply = bool(e2ee_req.get("expectEncryptedReply", False)) if e2ee_req else False
         reply_key = None
         reply_ad = ""
+        inbound_counter = 0
 
         message = (data.get("message") or "").strip()
         if e2ee_req and (not message) and e2ee_req.get("ciphertext"):
             try:
-                message, reply_key, reply_ad = decrypt_real_envelope(e2ee_req)
+                message, reply_key, reply_ad, inbound_counter = decrypt_real_envelope(e2ee_req)
                 message = message.strip()
                 otk_id = str(e2ee_req.get("otkId", "")).strip()
                 if otk_id:
@@ -563,6 +609,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
         session_id = (data.get("sessionId") or DEFAULT_SESSION).strip() or DEFAULT_SESSION
+        if e2ee_req and e2ee_req.get("ciphertext"):
+            if not _ratchet_check_and_advance(session_id, inbound_counter):
+                self._send(409, {"ok": False, "error": "e2ee_replay_or_reorder", "details": "Inbound counter not monotonic"})
+                return
+
         attachment = data.get("attachment") if isinstance(data.get("attachment"), dict) else None
         prefs = data.get("prefs") if isinstance(data.get("prefs"), dict) else {}
         preferred_lang = (prefs.get("language") or "auto").strip().lower()
@@ -663,7 +714,9 @@ class Handler(BaseHTTPRequestHandler):
                 payload["mediaUrl"] = media_url
 
             if e2ee_req and encrypted_reply and reply_key is not None:
+                out_counter = _ratchet_next_out_counter(session_id)
                 envelope = encrypt_real_envelope(reply, key=reply_key, ad=(reply_ad or session_id))
+                envelope["counter"] = out_counter
                 payload["e2eeReply"] = envelope
                 payload["reply"] = ""
 
