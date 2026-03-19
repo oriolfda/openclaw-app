@@ -560,6 +560,7 @@ class MainActivity : AppCompatActivity() {
                     mediaPlayer = null
                     currentPlayingTs = null
                     adapter.setPlayingMessage(null)
+                    runOnUiThread { statusText.text = getString(R.string.status_ready) }
                 }
                 prepareAsync()
             }
@@ -587,6 +588,7 @@ class MainActivity : AppCompatActivity() {
                     mediaPlayer = null
                     currentPlayingTs = null
                     adapter.setPlayingMessage(null)
+                    runOnUiThread { statusText.text = getString(R.string.status_ready) }
                 }
                 prepareAsync()
             }
