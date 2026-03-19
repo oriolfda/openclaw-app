@@ -234,6 +234,7 @@ def _ensure_session_chains(st: dict) -> dict:
     send.setdefault("lastOut", 0)
     recv.setdefault("maxIn", 0)
     recv.setdefault("seenIn", [])
+    recv.setdefault("skippedIn", [])
     recv.setdefault("ratchetStep", 0)
     recv.setdefault("lastPeerRatchetPub", "")
     return st
@@ -253,6 +254,7 @@ def _load_ratchet_store():
                         "recv": {
                             "maxIn": int(st.get("maxIn", 0)),
                             "seenIn": st.get("seenIn", []),
+                            "skippedIn": st.get("skippedIn", []),
                             "ratchetStep": int(st.get("ratchetStep", 0)),
                             "lastPeerRatchetPub": st.get("lastPeerRatchetPub", ""),
                         },
@@ -279,6 +281,7 @@ def _ratchet_check_and_advance(session_id: str, inbound_counter: int, window: in
 
     max_in = int(recv.get("maxIn", 0))
     seen = set(int(x) for x in recv.get("seenIn", []) if isinstance(x, int) or str(x).isdigit())
+    skipped = set(int(x) for x in recv.get("skippedIn", []) if isinstance(x, int) or str(x).isdigit())
 
     if inbound_counter <= 0:
         return False
@@ -287,13 +290,19 @@ def _ratchet_check_and_advance(session_id: str, inbound_counter: int, window: in
     if inbound_counter < max_in - window:
         return False
 
+    if inbound_counter > max_in + 1:
+        skipped.update(range(max_in + 1, inbound_counter))
+
     seen.add(inbound_counter)
+    skipped.discard(inbound_counter)
     max_in = max(max_in, inbound_counter)
     floor = max_in - window
     seen = {c for c in seen if c >= floor}
+    skipped = {c for c in skipped if c >= floor}
 
     recv["maxIn"] = max_in
     recv["seenIn"] = sorted(seen)
+    recv["skippedIn"] = sorted(skipped)
     _save_ratchet_store(store)
     return True
 
