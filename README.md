@@ -136,3 +136,5 @@ Guia completa per a l’assistent:
 Aquesta aplicació és una **interfície de comunicació** amb un assistent AI. L’ús, les configuracions i les accions executades a través de l’assistent són responsabilitat de la persona que la desplega i la utilitza.
 
 Els autors/col·laboradors del repositori no assumeixen responsabilitat per usos indeguts, pèrdues de dades, incidències de seguretat o qualsevol dany derivat de la instal·lació, configuració o ús de l’app.
+
+Si decideixes instal·lar o fer servir aquesta app, s’entén que **acceptes aquests termes**.
