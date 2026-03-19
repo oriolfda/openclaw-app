@@ -232,12 +232,17 @@ def _ensure_session_chains(st: dict) -> dict:
     send = st.setdefault("send", {})
     recv = st.setdefault("recv", {})
     send.setdefault("lastOut", 0)
+    send.setdefault("chainCounter", 0)
     recv.setdefault("maxIn", 0)
     recv.setdefault("seenIn", [])
     recv.setdefault("skippedIn", [])
     recv.setdefault("skippedByHeader", {})
+    recv.setdefault("chainCounter", 0)
     recv.setdefault("ratchetStep", 0)
     recv.setdefault("lastPeerRatchetPub", "")
+    st.setdefault("rootKeySeed", "")
+    st.setdefault("sendChainSeed", "")
+    st.setdefault("recvChainSeed", "")
     return st
 
 
