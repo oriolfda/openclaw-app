@@ -156,6 +156,7 @@ class MainActivity : AppCompatActivity() {
         recordDotsText = findViewById(R.id.recordDotsText)
 
         appliedUiLocale = getSharedPreferences("openclaw_app_prefs", MODE_PRIVATE).getString("ui_locale", "auto") ?: "auto"
+        runCatching { E2eeKeyManager(this).ensureLocalBundle() }
 
         val theme = currentTheme()
         adapter = ChatAdapter(

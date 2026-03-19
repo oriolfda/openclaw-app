@@ -18,6 +18,10 @@ EDGE_TTS = os.environ.get("OPENCLAW_APP_BRIDGE_EDGE_TTS", "/home/oriol/.openclaw
 E2EE_ENABLED = os.environ.get("OPENCLAW_APP_E2EE_ENABLED", "false").lower() == "true"
 E2EE_REQUIRED = os.environ.get("OPENCLAW_APP_E2EE_REQUIRED", "false").lower() == "true"
 E2EE_PROTOCOL = os.environ.get("OPENCLAW_APP_E2EE_PROTOCOL", "signal-x3dh-dr-v1")
+E2EE_BUNDLE_KID = os.environ.get("OPENCLAW_APP_E2EE_BUNDLE_KID", "1")
+E2EE_IDENTITY_PUB = os.environ.get("OPENCLAW_APP_E2EE_IDENTITY_PUB", "")
+E2EE_SIGNED_PREKEY_PUB = os.environ.get("OPENCLAW_APP_E2EE_SIGNED_PREKEY_PUB", "")
+E2EE_SIGNED_PREKEY_SIG = os.environ.get("OPENCLAW_APP_E2EE_SIGNED_PREKEY_SIG", "")
 
 
 def extract_json_block(text: str):
@@ -154,6 +158,39 @@ def synthesize_tts_audio(text: str, lang_hint: str = "ca"):
         return None
 
 
+def b64rand(n: int) -> str:
+    return base64.urlsafe_b64encode(os.urandom(n)).decode("ascii").rstrip("=")
+
+
+def e2ee_bundle_payload() -> dict:
+    identity = E2EE_IDENTITY_PUB or f"dev-id-{b64rand(32)}"
+    spk = E2EE_SIGNED_PREKEY_PUB or f"dev-spk-{b64rand(32)}"
+    sig = E2EE_SIGNED_PREKEY_SIG or f"dev-sig-{b64rand(48)}"
+    one_time = [
+        {"id": f"otk-{i+1}", "publicKey": f"dev-otk-{b64rand(32)}"}
+        for i in range(5)
+    ]
+    return {
+        "ok": True,
+        "e2ee": {
+            "enabled": E2EE_ENABLED,
+            "required": E2EE_REQUIRED,
+            "protocol": E2EE_PROTOCOL,
+            "bundle": {
+                "kid": E2EE_BUNDLE_KID,
+                "identityKey": identity,
+                "signedPreKey": {
+                    "id": f"spk-{E2EE_BUNDLE_KID}",
+                    "publicKey": spk,
+                    "signature": sig,
+                },
+                "oneTimePreKeys": one_time,
+            },
+            "warning": "Development bundle format (stage B bootstrap)."
+        }
+    }
+
+
 def process_attachment(att: dict):
     """Decode attachment and return (prompt_suffix, temp_paths[])"""
     name = safe_name((att.get("name") or "attachment"))
@@ -238,9 +275,16 @@ class Handler(BaseHTTPRequestHandler):
                     "enabled": E2EE_ENABLED,
                     "required": E2EE_REQUIRED,
                     "protocol": E2EE_PROTOCOL,
-                    "stage": "A-capability-and-enforcement"
+                    "stage": "B-prekey-bundle-bootstrap"
                 }
             })
+            return
+
+        if self.path == "/e2ee/prekey-bundle":
+            if not self._auth_ok():
+                self._send(401, {"ok": False, "error": "Unauthorized"})
+                return
+            self._send(200, e2ee_bundle_payload())
             return
 
         if self.path.startswith("/media/"):

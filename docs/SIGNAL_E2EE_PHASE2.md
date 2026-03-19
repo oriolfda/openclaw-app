@@ -39,9 +39,10 @@ Implement end-to-end encryption for app↔bridge communications inspired by Sign
 - Add E2EE capability flags and strict enforcement mode in bridge.
 - Add E2EE status endpoint for client capability negotiation.
 
-### Stage B
-- Add cryptographic primitives and key storage on Android client.
-- Add bridge prekey bundle generation + rotation.
+### Stage B (bootstrap implemented in this branch)
+- [x] Add initial key storage helper on Android client.
+- [x] Add bridge prekey bundle endpoint (`/e2ee/prekey-bundle`) for capability bootstrap.
+- [ ] Replace development key material with real X25519/Ed25519 primitives and signed rotation.
 
 ### Stage C
 - Add encrypted `/chat` payload path and decryption pipeline.
