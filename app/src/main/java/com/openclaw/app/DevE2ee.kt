@@ -32,7 +32,8 @@ object DevE2ee {
         val shared = ka.generateSecret()
 
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
-        val key = hkdfSha256(shared, salt, "openclaw-e2ee-v1", 32)
+        val baseKey = hkdfSha256(shared, salt, "openclaw-e2ee-v1", 32)
+        val key = deriveMessageKey(baseKey, counter, "c2s")
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -53,13 +54,15 @@ object DevE2ee {
             put("expectEncryptedReply", true)
         }
 
-        return EncryptResult(env, key)
+        return EncryptResult(env, baseKey)
     }
 
-    fun decryptWithKey(key: ByteArray, env: JSONObject): String {
+    fun decryptWithKey(baseKey: ByteArray, env: JSONObject): String {
         val ad = env.optString("ad", "")
         val iv = Base64.decode(env.optString("iv", ""), Base64.DEFAULT)
         val ct = Base64.decode(env.optString("ciphertext", ""), Base64.DEFAULT)
+        val counter = env.optInt("counter", 0)
+        val key = deriveMessageKey(baseKey, counter, "s2c")
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
@@ -68,8 +71,9 @@ object DevE2ee {
         return String(pt, Charsets.UTF_8)
     }
 
-    fun encryptAttachment(base64Data: String, key: ByteArray, name: String, mime: String, ad: String): JSONObject {
+    fun encryptAttachment(base64Data: String, baseKey: ByteArray, name: String, mime: String, ad: String, counter: Int): JSONObject {
         val raw = Base64.decode(base64Data, Base64.DEFAULT)
+        val key = deriveMessageKey(baseKey, counter, "att")
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
@@ -82,6 +86,7 @@ object DevE2ee {
             put("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
             put("ciphertext", Base64.encodeToString(ct, Base64.NO_WRAP))
             put("ad", ad)
+            put("counter", counter)
         }
     }
 
@@ -103,6 +108,13 @@ object DevE2ee {
         val bytes = Base64.decode(b64, Base64.DEFAULT)
         val kf = KeyFactory.getInstance("EC")
         return kf.generatePublic(X509EncodedKeySpec(bytes))
+    }
+
+    private fun deriveMessageKey(baseKey: ByteArray, counter: Int, label: String): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(baseKey, "HmacSHA256"))
+        val d = mac.doFinal("$label:$counter".toByteArray(Charsets.UTF_8))
+        return d.copyOfRange(0, 32)
     }
 
     private fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: String, len: Int): ByteArray {

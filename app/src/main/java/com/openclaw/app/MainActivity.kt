@@ -814,6 +814,7 @@ class MainActivity : AppCompatActivity() {
                 val bridgePub = bridgeTarget?.first
                 val bridgeOtkId = bridgeTarget?.second
                 var encResult: DevE2ee.EncryptResult? = null
+                var messageCounter = 0
 
                 val payload = JSONObject().apply {
                     put("sessionId", "openclaw-app-chat")
@@ -824,6 +825,7 @@ class MainActivity : AppCompatActivity() {
                     if (!bridgePub.isNullOrBlank()) {
                         val nextCounter = prefs.getInt("e2ee_send_counter", 0) + 1
                         prefs.edit().putInt("e2ee_send_counter", nextCounter).apply()
+                        messageCounter = nextCounter
                         encResult = DevE2ee.encryptForBridge(payloadText, bridgePub, "openclaw-app-chat", bridgeOtkId, nextCounter)
                         put("message", "")
                         put("e2ee", encResult!!.envelope)
@@ -833,7 +835,7 @@ class MainActivity : AppCompatActivity() {
 
                     attachment?.let {
                         if (encResult != null) {
-                            put("e2eeAttachment", DevE2ee.encryptAttachment(it.base64, encResult!!.responseKey, it.name, it.mime, "openclaw-app-chat"))
+                            put("e2eeAttachment", DevE2ee.encryptAttachment(it.base64, encResult!!.responseKey, it.name, it.mime, "openclaw-app-chat", messageCounter))
                         } else {
                             put("attachment", JSONObject().apply {
                                 put("name", it.name)

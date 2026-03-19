@@ -330,6 +330,11 @@ def _hkdf_key(shared: bytes, salt: bytes) -> bytes:
     return hkdf.derive(shared)
 
 
+def _derive_message_key(base_key: bytes, counter: int, label: str) -> bytes:
+    import hmac, hashlib
+    return hmac.new(base_key, f"{label}:{counter}".encode("utf-8"), hashlib.sha256).digest()[:32]
+
+
 def encrypt_real_envelope(plaintext: str, key: bytes, ad: str = "") -> dict:
     iv = os.urandom(12)
     aes = AESGCM(key)
@@ -353,10 +358,11 @@ def decrypt_real_envelope(env: dict):
 
     eph_pub = _decode_pubkey_spki(eph_b64)
     shared = _BRIDGE_PRIVKEY.exchange(ec.ECDH(), eph_pub)
-    key = _hkdf_key(shared, salt)
+    base_key = _hkdf_key(shared, salt)
+    key = _derive_message_key(base_key, counter, "c2s")
     aes = AESGCM(key)
     pt = aes.decrypt(iv, ct, ad.encode("utf-8")).decode("utf-8")
-    return pt, key, ad, counter
+    return pt, base_key, ad, counter
 
 
 def e2ee_bundle_payload() -> dict:
@@ -384,13 +390,15 @@ def e2ee_bundle_payload() -> dict:
     }
 
 
-def decrypt_e2ee_attachment(att: dict, key: bytes):
+def decrypt_e2ee_attachment(att: dict, base_key: bytes):
     name = safe_name((att.get("name") or "attachment"))
     mime = (att.get("mime") or "application/octet-stream").lower()
     iv = base64.b64decode(att.get("iv", ""))
     ct = base64.b64decode(att.get("ciphertext", ""))
     ad = str(att.get("ad", ""))
+    counter = int(att.get("counter", 0))
 
+    key = _derive_message_key(base_key, counter, "att")
     aes = AESGCM(key)
     raw = aes.decrypt(iv, ct, ad.encode("utf-8"))
 
@@ -748,7 +756,8 @@ class Handler(BaseHTTPRequestHandler):
 
             if e2ee_req and encrypted_reply and reply_key is not None:
                 out_counter = _ratchet_next_out_counter(session_id)
-                envelope = encrypt_real_envelope(reply, key=reply_key, ad=(reply_ad or session_id))
+                msg_key = _derive_message_key(reply_key, out_counter, "s2c")
+                envelope = encrypt_real_envelope(reply, key=msg_key, ad=(reply_ad or session_id))
                 envelope["counter"] = out_counter
                 payload["e2eeReply"] = envelope
                 payload["reply"] = ""
