@@ -816,8 +816,9 @@ class MainActivity : AppCompatActivity() {
                 var encResult: DevE2ee.EncryptResult? = null
                 var messageCounter = 0
 
+                val e2eeSessionId = "openclaw-app-chat"
                 val payload = JSONObject().apply {
-                    put("sessionId", "openclaw-app-chat")
+                    put("sessionId", e2eeSessionId)
                     put("prefs", JSONObject().apply {
                         put("showTranscription", showTranscriptions)
                     })
@@ -826,7 +827,8 @@ class MainActivity : AppCompatActivity() {
                         val nextCounter = prefs.getInt("e2ee_send_counter", 0) + 1
                         prefs.edit().putInt("e2ee_send_counter", nextCounter).apply()
                         messageCounter = nextCounter
-                        encResult = DevE2ee.encryptForBridge(payloadText, bridgePub, "openclaw-app-chat", bridgeOtkId, nextCounter)
+                        encResult = DevE2ee.encryptForBridge(payloadText, bridgePub, e2eeSessionId, bridgeOtkId, nextCounter)
+                        prefs.edit().putString("e2ee_base_${e2eeSessionId}", Base64.encodeToString(encResult!!.responseKey, Base64.NO_WRAP)).apply()
                         put("message", "")
                         put("e2ee", encResult!!.envelope)
                     } else {
@@ -869,13 +871,17 @@ class MainActivity : AppCompatActivity() {
 
                     val assistantTextRaw = try {
                         val obj = JSONObject(body)
-                        if (obj.has("e2eeReply") && encResult != null) {
+                        if (obj.has("e2eeReply")) {
                             val env = obj.getJSONObject("e2eeReply")
                             val inCounter = env.optInt("counter", 0)
-                            if (inCounter > 0 && !acceptIncomingCounter(prefs, inCounter)) {
+                            if (inCounter > 0 && !acceptIncomingCounter(prefs, inCounter, e2eeSessionId)) {
                                 "[E2EE] Response dropped (replay/window)"
                             } else {
-                                DevE2ee.decryptWithKey(encResult!!.responseKey, env)
+                                val baseKey = encResult?.responseKey ?: run {
+                                    val stored = prefs.getString("e2ee_base_${e2eeSessionId}", "").orEmpty()
+                                    if (stored.isBlank()) null else Base64.decode(stored, Base64.DEFAULT)
+                                }
+                                if (baseKey != null) DevE2ee.decryptWithKey(baseKey, env) else parseAssistantText(body, code)
                             }
                         } else {
                             parseAssistantText(body, code)
