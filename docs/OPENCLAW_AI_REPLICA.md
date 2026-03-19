@@ -16,7 +16,9 @@ Minimum intake fields:
 6. Audio preferences:
    - STT transcription visible in chat? (yes/no)
    - TTS enabled for assistant replies? (yes/no)
-   - Preferred TTS voice(s) by language
+   - TTS mode: `auto` or `specific-voice`
+   - If `auto`: ask which languages must be supported and which voice to use per language.
+   - If `specific-voice`: ask the exact voice id/name and when to force it.
 7. Deployment preference:
    - Local LAN only, or internet-accessible?
    - If internet-accessible: domain/subdomain plan (DuckDNS/custom domain), reverse proxy choice (e.g., nginx), TLS plan.
@@ -70,6 +72,11 @@ Recommended environment variables:
 - `OPENCLAW_APP_BRIDGE_MEDIA_DIR`
 - `OPENCLAW_APP_BRIDGE_EDGE_TTS`
 
+Bridge-TTS note:
+- Configure bridge-TTS after collecting the interactive TTS mode (`auto`/`specific-voice`).
+- For `auto`, store language→voice mapping explicitly.
+- For `specific-voice`, store the forced voice and applicability rules.
+
 ## 5) Token keystore (critical)
 For release signing, the Android keystore is mandatory.
 
@@ -85,7 +92,10 @@ For release signing, the Android keystore is mandatory.
 - If disabled, keep voice-input UX minimal and privacy-oriented.
 
 ### TTS enablement
-- Honor human-selected voice per language.
+- Ask interactively for TTS treatment mode: `auto` or `specific-voice`.
+- If `auto`: collect language list + explicit voice mapping per language before bridge setup.
+- If `specific-voice`: collect one explicit voice and forcing rules/scope.
+- Honor human-selected voice configuration exactly.
 - If no voice is selected for a language, apply a documented fallback voice.
 - Keep pronunciation settings/versioned presets explicit.
 

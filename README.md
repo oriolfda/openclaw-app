@@ -21,8 +21,14 @@ Abans de res, pensa aquests punts:
 - **Tema de colors** (fosc vermell, blau, verd, clar...)
 - **Àudio**:
   - si vols **transcripció STT** visible al xat
-  - si vols **TTS** per les respostes
-  - quina **veu TTS** prefereixes (val la pena provar-ne 3-5 i triar per claredat + naturalitat)
+  - per al **TTS**, tria el tractament:
+    - **auto** (veu segons idioma)
+    - **veu específica** (una veu fixa)
+  - si tries **auto**, defineix:
+    - quins idiomes vols cobrir
+    - quina veu s’ha d’usar a cada idioma (per preparar bé el bridge-TTS)
+  - si tries **veu específica**, indica la veu exacta i en quins casos s’ha d’aplicar
+  - recomanat: provar 3-5 veus i triar per claredat + naturalitat
 - **Com publicar-la si la vols usar arreu** (fora de la LAN):
   - domini/subdomini cap a la IP pública de la teva app
   - exemple gratuït: **DuckDNS + nginx**
