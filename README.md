@@ -46,20 +46,20 @@ Recomanació: que el **repo sigui teu** (GitHub de l’humà) i no de l’assist
 
 Flux recomanat:
 - **2.1** Crea un repo nou al teu GitHub (p. ex. `openclaw-app`)
-- **2.2** Crea una **deploy key** específica per aquest repo (amb escriptura si l’assistent ha de fer push)
+- **2.2** Crea una **deploy key** específica per aquest repo. Si vols que l’assistent faci canvis a la app i els pugi al repo, has de donar-li permisos d’escriptura.
 
-Exemple breu (GitHub), just després del pas 2.2:
+Exemple breu (GitHub):
 1. Repository → **Settings** → **Deploy keys** → **Add deploy key**
 2. Títol: p. ex. `openclaw-app-assistant`
 3. Enganxa la clau pública (`*.pub`)
-4. Activa **Allow write access** si vols que l’assistent pugi canvis
+4. Activa **Allow write access** si esperes que l’assistent faci canvis i els pugi al repo
 5. Desa la key
 
 - **2.3** Comparteix amb l’assistent:
   - **URL del repo acabat de crear al teu GitHub**
   - ruta/localització de la clau SSH (al host on treballa l’assistent)
 
-### Pas 3 — Dona aquest repo (aquest, el nostre) al teu assistent OpenClaw
+### Pas 3 — Dona aquest repo al teu assistent OpenClaw
 Passa-li l’URL del repo i indica-li simplement que segueixi `docs/OPENCLAW_AI_REPLICA.md`.
 
 També li pots dir que et demani, de forma opcional, la **carpeta compartida** on vols rebre l’APK i comunicar incidències.
