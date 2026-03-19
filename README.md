@@ -1,5 +1,7 @@
 # OpenClaw App
 
+> **AVÍS:** Aquesta app està en fase de construcció. Utilitza-la sota la teva pròpia responsabilitat.
+
 **OpenClaw App és una app Android per comunicar-te amb el teu assistent OpenClaw** de forma natural: text, àudio, imatges i vídeo, amb una interfície de xat moderna.
 
 Aquest repositori està pensat perquè qualsevol persona (encara que no sigui tècnica) pugui:
@@ -126,3 +128,11 @@ Guia completa per a l’assistent:
 ## En una frase
 
 **Tu decideixes com vols l’app. El teu assistent OpenClaw la construeix i la personalitza per tu.**
+
+---
+
+## Avís legal bàsic
+
+Aquesta aplicació és una **interfície de comunicació** amb un assistent AI. L’ús, les configuracions i les accions executades a través de l’assistent són responsabilitat de la persona que la desplega i la utilitza.
+
+Els autors/col·laboradors del repositori no assumeixen responsabilitat per usos indeguts, pèrdues de dades, incidències de seguretat o qualsevol dany derivat de la instal·lació, configuració o ús de l’app.
