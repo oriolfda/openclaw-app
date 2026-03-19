@@ -191,8 +191,9 @@ class ChatAdapter(
 
                 val playIcon = if (playingMessageTs == item.ts) R.drawable.ic_pause_min else R.drawable.ic_play_min
                 holder.play.setImageResource(playIcon)
-                holder.play.setColorFilter(0xFFFFFFFF.toInt())
+                holder.play.setColorFilter(if (item.role == "user") theme.userText else theme.botText)
                 holder.play.setOnClickListener { onMessageClick?.invoke(item) }
+                holder.wave.setColorFilter(theme.statusColor)
                 holder.wave.alpha = if (playingMessageTs == item.ts) 1f else 0.85f
 
                 holder.caption.text = if (item.text.isBlank()) "Àudio" else item.text

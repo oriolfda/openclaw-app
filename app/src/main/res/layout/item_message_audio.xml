@@ -22,11 +22,11 @@
 
             <ImageButton
                 android:id="@+id/audioPlayButton"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:background="@drawable/bg_audio_play_circle"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@android:color/transparent"
                 android:contentDescription="Play"
-                android:padding="16dp"
+                android:padding="6dp"
                 android:src="@drawable/ic_play_min" />
 
             <ImageView
