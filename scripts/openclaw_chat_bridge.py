@@ -402,9 +402,14 @@ def _hkdf_key(shared: bytes, salt: bytes) -> bytes:
     return hkdf.derive(shared)
 
 
-def _derive_message_key(base_key: bytes, counter: int, label: str) -> bytes:
+def _derive_chain_key(base_key: bytes, direction: str) -> bytes:
     import hmac, hashlib
-    return hmac.new(base_key, f"{label}:{counter}".encode("utf-8"), hashlib.sha256).digest()[:32]
+    return hmac.new(base_key, f"chain:{direction}".encode("utf-8"), hashlib.sha256).digest()[:32]
+
+
+def _derive_message_key(chain_key: bytes, counter: int, label: str) -> bytes:
+    import hmac, hashlib
+    return hmac.new(chain_key, f"{label}:{counter}".encode("utf-8"), hashlib.sha256).digest()[:32]
 
 
 def encrypt_real_envelope(plaintext: str, key: bytes, ad: str = "") -> dict:
@@ -460,7 +465,8 @@ def decrypt_real_envelope(env: dict, session_id: str):
             pass
 
     base_key = _ratchet_mix_chain_key(session_id, base_key, "c2s", counter)
-    key = _derive_message_key(base_key, counter, "c2s")
+    recv_chain_key = _derive_chain_key(base_key, "recv")
+    key = _derive_message_key(recv_chain_key, counter, "c2s")
     aes = AESGCM(key)
     pt = aes.decrypt(iv, ct, ad.encode("utf-8")).decode("utf-8")
     return pt, base_key, ad, counter
@@ -499,7 +505,8 @@ def decrypt_e2ee_attachment(att: dict, base_key: bytes):
     ad = str(att.get("ad", ""))
     counter = int(att.get("counter", 0))
 
-    key = _derive_message_key(base_key, counter, "att")
+    recv_chain_key = _derive_chain_key(base_key, "recv")
+    key = _derive_message_key(recv_chain_key, counter, "att")
     aes = AESGCM(key)
     raw = aes.decrypt(iv, ct, ad.encode("utf-8"))
 
@@ -858,7 +865,8 @@ class Handler(BaseHTTPRequestHandler):
             if e2ee_req and encrypted_reply and reply_key is not None:
                 out_counter = _ratchet_next_out_counter(session_id)
                 reply_key = _ratchet_mix_chain_key(session_id, reply_key, "s2c", out_counter)
-                msg_key = _derive_message_key(reply_key, out_counter, "s2c")
+                send_chain_key = _derive_chain_key(reply_key, "send")
+                msg_key = _derive_message_key(send_chain_key, out_counter, "s2c")
                 envelope = encrypt_real_envelope(reply, key=msg_key, ad=(reply_ad or session_id))
                 envelope["counter"] = out_counter
                 payload["e2eeReply"] = envelope

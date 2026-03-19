@@ -44,7 +44,8 @@ object DevE2ee {
         val ratchetSalt = MessageDigest.getInstance("SHA-256").digest(ratchetPubBytes).copyOfRange(0, 16)
         baseKey = hkdfSha256(baseKey + ratchetShared, ratchetSalt, "openclaw-ratchet-step-v1", 32)
 
-        val key = deriveMessageKey(baseKey, counter, "c2s")
+        val sendChainKey = deriveChainKey(baseKey, "send")
+        val key = deriveMessageKey(sendChainKey, counter, "c2s")
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -74,7 +75,8 @@ object DevE2ee {
         val iv = Base64.decode(env.optString("iv", ""), Base64.DEFAULT)
         val ct = Base64.decode(env.optString("ciphertext", ""), Base64.DEFAULT)
         val counter = env.optInt("counter", 0)
-        val key = deriveMessageKey(baseKey, counter, "s2c")
+        val recvChainKey = deriveChainKey(baseKey, "recv")
+        val key = deriveMessageKey(recvChainKey, counter, "s2c")
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
@@ -85,7 +87,8 @@ object DevE2ee {
 
     fun encryptAttachment(base64Data: String, baseKey: ByteArray, name: String, mime: String, ad: String, counter: Int): JSONObject {
         val raw = Base64.decode(base64Data, Base64.DEFAULT)
-        val key = deriveMessageKey(baseKey, counter, "att")
+        val sendChainKey = deriveChainKey(baseKey, "send")
+        val key = deriveMessageKey(sendChainKey, counter, "att")
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
@@ -122,9 +125,16 @@ object DevE2ee {
         return kf.generatePublic(X509EncodedKeySpec(bytes))
     }
 
-    private fun deriveMessageKey(baseKey: ByteArray, counter: Int, label: String): ByteArray {
+    private fun deriveChainKey(baseKey: ByteArray, direction: String): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(baseKey, "HmacSHA256"))
+        val d = mac.doFinal("chain:$direction".toByteArray(Charsets.UTF_8))
+        return d.copyOfRange(0, 32)
+    }
+
+    private fun deriveMessageKey(chainKey: ByteArray, counter: Int, label: String): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(chainKey, "HmacSHA256"))
         val d = mac.doFinal("$label:$counter".toByteArray(Charsets.UTF_8))
         return d.copyOfRange(0, 32)
     }
