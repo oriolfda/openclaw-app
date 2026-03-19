@@ -344,13 +344,21 @@ def _ratchet_mix_chain_key(session_id: str, base_key: bytes, direction: str, cou
     store = _load_ratchet_store()
     sessions = store.setdefault("sessions", {})
     st = _ensure_session_chains(sessions.setdefault(session_id, {}))
-    chain_box = st["recv"] if direction == "c2s" else st["send"]
-    key_name = "recvChainKey" if direction == "c2s" else "sendChainKey"
 
-    prev_b64 = chain_box.get(key_name, "")
+    is_recv = direction == "c2s"
+    chain_box = st["recv"] if is_recv else st["send"]
+    seed_name = "recvChainSeed" if is_recv else "sendChainSeed"
+
+    prev_b64 = st.get(seed_name, "")
     prev = base64.b64decode(prev_b64) if prev_b64 else base_key
     mixed = hashlib.sha256(prev + base_key + direction.encode("utf-8") + str(counter).encode("utf-8")).digest()
-    chain_box[key_name] = base64.b64encode(mixed).decode("ascii")
+
+    st[seed_name] = base64.b64encode(mixed).decode("ascii")
+    chain_box["chainCounter"] = int(chain_box.get("chainCounter", 0)) + 1
+
+    if not st.get("rootKeySeed"):
+        st["rootKeySeed"] = base64.b64encode(hashlib.sha256(base_key + b"root").digest()).decode("ascii")
+
     _save_ratchet_store(store)
     return mixed
 
